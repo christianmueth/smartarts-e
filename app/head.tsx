@@ -4,7 +4,7 @@ export default function Head() {
       <link rel="icon" href="/logo.ico" />
       <link rel="shortcut icon" href="/logo.ico" />
       <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
-      <meta name="theme-color" content="#ffffff" />
+      <meta name="theme-color" content="#fff4e8" />
     </>
   );
 }

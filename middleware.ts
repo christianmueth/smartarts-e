@@ -1,22 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
+const SITE_ALLOWLIST = new Set(["/"]);
+
 // Public routes should include auth pages to avoid redirect loops
 // You can extend this list with other public paths as needed
 const isPublicRoute = createRouteMatcher([
   "/",
-  "/label-review(.*)",
-  "/how-adaptive-guidance-works(.*)",
-  "/privacy(.*)",
-  "/privacy-policy(.*)",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api/label-review(.*)",
-  "/api/workspace/presentation-plan(.*)",
-  "/api/workspace/whiteboard-assist(.*)",
-  "/api/transcribe(.*)",
-  "/api/youtube/transcript(.*)",
-  "/api/youtube-transcript(.*)",
+  "/api/(.*)",
 ]);
 
 const hasClerkEnv = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
@@ -37,8 +28,27 @@ function withTraceHeaders(request: NextRequest) {
   return response;
 }
 
+function redirectLegacySiteRoutes(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  if (path.startsWith("/api")) {
+    return null;
+  }
+
+  if (SITE_ALLOWLIST.has(path)) {
+    return null;
+  }
+
+  const url = new URL("/", request.url);
+  return NextResponse.redirect(url);
+}
+
 const middleware = hasClerkEnv
   ? clerkMiddleware(async (auth, request) => {
+      const siteRedirect = redirectLegacySiteRoutes(request);
+      if (siteRedirect) {
+        return siteRedirect;
+      }
+
       const response = withTraceHeaders(request);
 
       // Optional test bypass for CLI smoke-tests without a Clerk session.
@@ -72,7 +82,16 @@ const middleware = hasClerkEnv
     })
   : ((request: NextRequest) => withTraceHeaders(request));
 
-export default middleware;
+const middlewareWithoutClerk = (request: NextRequest) => {
+  const siteRedirect = redirectLegacySiteRoutes(request);
+  if (siteRedirect) {
+    return siteRedirect;
+  }
+
+  return withTraceHeaders(request);
+};
+
+export default hasClerkEnv ? middleware : middlewareWithoutClerk;
 
 export const config = {
   matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api)(.*)"]
