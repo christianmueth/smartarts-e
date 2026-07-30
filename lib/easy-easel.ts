@@ -189,6 +189,7 @@ export async function createUploadedEditorAssetForClerkUser(input: {
   mimeType?: string | null;
   width?: number | null;
   height?: number | null;
+  saved?: boolean;
 }) {
   return createEditorAssetRecordForClerkUser({
     clerkUserId: input.clerkUserId,
@@ -200,6 +201,7 @@ export async function createUploadedEditorAssetForClerkUser(input: {
     height: input.height ?? null,
     prompt: null,
     sourceAssetId: null,
+    saved: input.saved,
   });
 }
 

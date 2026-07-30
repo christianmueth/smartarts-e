@@ -16,6 +16,7 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const file = formData.get("file");
+    const shouldSave = String(formData.get("saved") || "").trim().toLowerCase() === "true";
     if (!(file instanceof File)) {
       return NextResponse.json({ ok: false, error: "No image provided." }, { status: 400 });
     }
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
       title: file.name.replace(/\.[^.]+$/, "") || "Uploaded image",
       imageUrl: blob.url,
       mimeType: file.type || null,
+      saved: shouldSave,
     });
 
     return NextResponse.json({ ok: true, asset });

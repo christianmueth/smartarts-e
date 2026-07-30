@@ -19,10 +19,9 @@ export default async function LibraryPage() {
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <div className="inline-flex rounded-full border border-yellow-300 bg-yellow-100/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
-              Lemonade Archive
+              Archive
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#7a1f4f]">Library</h1>
-            <p className="mt-1 text-sm text-pink-600">Saved images only.</p>
           </div>
           <a href="/" className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-50">Back</a>
         </div>

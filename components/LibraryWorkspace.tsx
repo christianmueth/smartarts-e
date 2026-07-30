@@ -22,7 +22,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
   const [assets, setAssets] = useState(initialAssets);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(initialAssets[0]?.id || null);
   const [editPrompt, setEditPrompt] = useState("");
-  const [busyAction, setBusyAction] = useState<"edit" | `delete:${string}` | null>(null);
+  const [busyAction, setBusyAction] = useState<"edit" | "upload" | `delete:${string}` | null>(null);
 
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.id === selectedAssetId) ?? null,
@@ -127,9 +127,63 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
     }
   }
 
+  async function uploadImage(file: File | null) {
+    if (!file) return;
+
+    const toastId = toast.loading("Uploading image...");
+    setBusyAction("upload");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("saved", "true");
+      const response = await fetch("/api/assets/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.asset) {
+        throw new Error(data?.error || "Image upload failed.");
+      }
+
+      const asset = data.asset as {
+        id: string;
+        title: string;
+        imageUrl: string;
+        prompt: string | null;
+        sourceAssetId: string | null;
+        createdAt: string;
+      };
+      const nextAsset: LibraryAsset = {
+        id: asset.id,
+        title: asset.title,
+        sourceUrl: asset.imageUrl,
+        prompt: asset.prompt,
+        enhancedPrompt: asset.prompt,
+        projectId: "",
+        projectName: "Easy Easel Library",
+        createdAt: asset.createdAt,
+      };
+
+      setAssets((current) => [nextAsset, ...current.filter((item) => item.id !== nextAsset.id)]);
+      setSelectedAssetId(nextAsset.id);
+      toast.success("Image added to archive.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed.", { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-pink-600">Saved images only.</p>
+          <label className="inline-flex cursor-pointer rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-100">
+            {busyAction === "upload" ? "Uploading..." : "Upload image"}
+            <input type="file" accept="image/*" className="hidden" onChange={(event) => void uploadImage(event.target.files?.[0] || null)} />
+          </label>
+        </div>
         {assets.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {assets.map((asset) => (
@@ -154,7 +208,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
           </div>
         ) : (
           <div className="rounded-[1.75rem] border border-dashed border-pink-200 bg-[linear-gradient(180deg,_rgba(255,241,247,0.95),_rgba(255,249,212,0.9))] px-6 py-14 text-center text-sm text-pink-500">
-            Save images from the homepage to build your library.
+            Upload images or save them from the homepage to build your archive.
           </div>
         )}
       </div>
