@@ -427,11 +427,14 @@ export async function runStudioProjectCommand(input: {
     throw new Error("Project not found.");
   }
 
-  const content = cleanText(input.content, 2000);
+  const rawContent = cleanText(input.content, 2000);
+  const referenceImageDataUrl = cleanDataUrl(input.referenceImageDataUrl);
+  const content = rawContent || (referenceImageDataUrl
+    ? "Create polished image variations based on the attached reference image while preserving the main subject and composition unless changed."
+    : "");
   if (!content) {
     throw new Error("A prompt or edit instruction is required.");
   }
-  const referenceImageDataUrl = cleanDataUrl(input.referenceImageDataUrl);
   const hasReferenceImageUpload = Boolean(referenceImageDataUrl);
   const resultCount = clampResultCount(input.resultCount);
 
@@ -775,7 +778,10 @@ function inferCommandMode(content: string, hasReferenceAsset: boolean) {
 
 function fallbackTitle(content: string) {
   const cleaned = cleanText(content, 120);
-  return cleaned.length > 60 ? `${cleaned.slice(0, 57)}...` : cleaned || "Studio asset";
+  if (!cleaned) {
+    return "Reference variation";
+  }
+  return cleaned.length > 60 ? `${cleaned.slice(0, 57)}...` : cleaned;
 }
 
 function fallbackAssistantReply(mode: "generate" | "edit" | "chat") {

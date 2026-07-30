@@ -170,8 +170,11 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   }
 
   async function runCommand(kind: "generate" | "edit" | "variation", content: string, assetId?: string | null, resultCount?: number) {
-    if (!content.trim()) {
-      toast.error(kind === "generate" ? "Add a prompt first." : "Add an edit instruction first.");
+    const trimmedContent = content.trim();
+    const hasReferenceInput = Boolean(referenceImageDataUrl || assetId);
+
+    if (!trimmedContent && !(kind === "generate" && hasReferenceInput)) {
+      toast.error(kind === "generate" ? "Add a prompt or attach a reference first." : "Add an edit instruction first.");
       return;
     }
 
@@ -184,7 +187,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content,
+          content: trimmedContent,
           assetId: assetId || null,
           referenceImageDataUrl,
           resultCount: resultCount || (kind === "generate" || kind === "variation" ? 4 : 1),
@@ -209,6 +212,8 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       setSelectedAssetId(batchIds[0] || project.assets[0]?.id || null);
       if (kind === "generate") {
         setPrompt("");
+        setReferenceImageDataUrl(null);
+        setReferenceImageName(null);
       }
       if (kind === "edit") {
         setEditorDraft("");
