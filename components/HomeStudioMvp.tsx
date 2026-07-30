@@ -93,7 +93,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   }, [signedIn, activeProjectId, activeProject?.id]);
 
   const visibleAssets = useMemo(
-    () => activeProject?.assets.filter((asset) => !hiddenAssetIds.includes(asset.id)) ?? [],
+    () => activeProject?.assets.filter((asset) => !hiddenAssetIds.includes(asset.id) && !asset.isSaved) ?? [],
     [activeProject, hiddenAssetIds]
   );
   const selectedAsset = visibleAssets.find((asset) => asset.id === selectedAssetId) ?? null;
