@@ -160,7 +160,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
         prompt: asset.prompt,
         enhancedPrompt: asset.prompt,
         projectId: "",
-        projectName: "Easy Easel Library",
+        projectName: "Easy Easel",
         createdAt: asset.createdAt,
       };
 

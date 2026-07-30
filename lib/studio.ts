@@ -323,6 +323,7 @@ export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Pr
         select: {
           id: true,
           name: true,
+          status: true,
         },
       },
     },
@@ -337,7 +338,7 @@ export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Pr
       prompt: asset.prompt,
       enhancedPrompt: asset.enhancedPrompt,
       projectId: asset.project.id,
-      projectName: asset.project.name,
+      projectName: buildSavedLibrarySourceLabel(asset.project.status, asset.project.name),
       createdAt: asset.createdAt.toISOString(),
     }));
 }
@@ -934,6 +935,18 @@ function buildSavedLibraryAssetTitle(createdAt: Date) {
   }).format(createdAt);
 
   return `Saved image ${label}`;
+}
+
+function buildSavedLibrarySourceLabel(status: string, name: string) {
+  if (status === "asset-library") {
+    return "Easy Easel";
+  }
+
+  if (/easy easel/i.test(name)) {
+    return "Easy Easel";
+  }
+
+  return "SmartArts-E Studio";
 }
 
 function clampResultCount(value: unknown) {
