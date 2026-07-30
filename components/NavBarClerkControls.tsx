@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import UserStatsPill from "@/components/UserStatsPill";
 
 const hasClerkClient = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
@@ -12,14 +11,8 @@ export default function NavBarClerkControls() {
   if (!hasClerkClient) {
     return (
       <>
-        <Link href="/app/studio" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Studio
-        </Link>
-        <Link href="/sign-in" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Sign in
-        </Link>
-        <Link href="/sign-up" className="text-sm px-3 py-1.5 rounded bg-black text-white hover:opacity-90">
-          Create account
+        <Link href="/app/billing" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
+          Billing
         </Link>
       </>
     );
@@ -28,20 +21,8 @@ export default function NavBarClerkControls() {
   return (
     <>
       <SignedIn>
-        <Link href="/app" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Dashboard
-        </Link>
-        <Link href="/app/studio" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Studio
-        </Link>
-        <Link href="/app/workspace" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Workspace
-        </Link>
         <Link href="/app/billing" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
           Billing
-        </Link>
-        <Link href="/app/progress" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
-          Progress
         </Link>
       </SignedIn>
 
@@ -50,7 +31,6 @@ export default function NavBarClerkControls() {
       </Suspense>
 
       <SignedIn>
-        <UserStatsPill />
         <UserButton afterSignOutUrl="/" />
       </SignedIn>
     </>
@@ -92,7 +72,7 @@ function buildAuthRedirectTarget(
 
 function normalizeNextTarget(value: string | null | undefined) {
   const trimmed = String(value || "").trim();
-  if (!trimmed.startsWith("/")) return "/app";
-  if (trimmed.startsWith("//")) return "/app";
+  if (!trimmed.startsWith("/")) return "/";
+  if (trimmed.startsWith("//")) return "/";
   return trimmed;
 }

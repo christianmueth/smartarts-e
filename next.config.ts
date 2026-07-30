@@ -46,6 +46,65 @@ const nextConfig: NextConfig = {
     // Default: no special headers
     return [];
   },
+  async redirects() {
+    return [
+      {
+        source: "/app",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/studio",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/reasoning",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/progress",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/study-notes/:path*",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/deck/:path*",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/app/workspace/:path*",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/workspace/:path*",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/how-adaptive-guidance-works",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/sign-in/:path*",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/sign-up/:path*",
+        destination: "/",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
