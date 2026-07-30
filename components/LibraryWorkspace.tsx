@@ -107,7 +107,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
 
       const nextAsset: LibraryAsset = {
         id: createdAsset.id,
-        title: createdAsset.title,
+        title: buildLibraryAssetTitle(createdAsset.createdAt),
         sourceUrl: createdAsset.sourceUrl,
         prompt: createdAsset.prompt,
         enhancedPrompt: createdAsset.enhancedPrompt,
@@ -155,7 +155,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
       };
       const nextAsset: LibraryAsset = {
         id: asset.id,
-        title: asset.title,
+        title: buildLibraryAssetTitle(asset.createdAt),
         sourceUrl: asset.imageUrl,
         prompt: asset.prompt,
         enhancedPrompt: asset.prompt,
@@ -274,6 +274,10 @@ function formatLibraryLabel(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function buildLibraryAssetTitle(value: string) {
+  return `Saved image ${formatLibraryLabel(value)}`;
 }
 
 function slugify(value: string) {

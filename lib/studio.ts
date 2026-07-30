@@ -332,7 +332,7 @@ export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Pr
     .filter((asset) => readAssetSavedFlag(asset.metadata))
     .map((asset) => ({
       id: asset.id,
-      title: asset.title,
+      title: buildSavedLibraryAssetTitle(asset.createdAt),
       sourceUrl: asset.sourceUrl,
       prompt: asset.prompt,
       enhancedPrompt: asset.enhancedPrompt,
@@ -923,6 +923,17 @@ function buildSearchText(...parts: Array<string | null | undefined>) {
 function buildAssetTitle(title: string, index: number, total: number) {
   const cleaned = cleanText(title, 110) || "Studio image";
   return total > 1 ? `${cleaned} ${index + 1}` : cleaned;
+}
+
+function buildSavedLibraryAssetTitle(createdAt: Date) {
+  const label = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(createdAt);
+
+  return `Saved image ${label}`;
 }
 
 function clampResultCount(value: unknown) {
