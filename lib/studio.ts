@@ -70,7 +70,7 @@ export type StudioProjectDetail = {
     width: number | null;
     height: number | null;
     tags: string[];
-    isFavorite: boolean;
+    isSaved: boolean;
     mode: string | null;
     createdAt: string;
   }>;
@@ -254,7 +254,7 @@ export async function getStudioProjectDetailForClerkUser(
       width: asset.width,
       height: asset.height,
       tags: asset.tags,
-      isFavorite: readAssetMetadataFlag(asset.metadata, "favorite"),
+      isSaved: readAssetSavedFlag(asset.metadata),
       mode: readAssetMetadataString(asset.metadata, "mode"),
       createdAt: asset.createdAt.toISOString(),
     })),
@@ -329,7 +329,7 @@ export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Pr
   });
 
   return assets
-    .filter((asset) => readAssetMetadataFlag(asset.metadata, "favorite"))
+    .filter((asset) => readAssetSavedFlag(asset.metadata))
     .map((asset) => ({
       id: asset.id,
       title: asset.title,
@@ -484,7 +484,7 @@ export async function runStudioProjectCommand(input: {
           searchText: buildSearchText(plan.title, content, plan.prompt, ...plan.tags),
           metadata: {
             mode: useReferenceImage ? "edit" : plan.mode,
-            favorite: false,
+            saved: false,
             referenceAssetId: referenceAsset?.id || null,
             resultCount: images.length,
             resultIndex: index,
@@ -537,10 +537,10 @@ export async function runStudioProjectCommand(input: {
   };
 }
 
-export async function setStudioAssetFavoriteForClerkUser(input: {
+export async function setStudioAssetSavedForClerkUser(input: {
   clerkUserId: string;
   assetId: string;
-  favorite: boolean;
+  saved: boolean;
 }) {
   const asset = await prisma.projectAsset.findFirst({
     where: {
@@ -564,7 +564,7 @@ export async function setStudioAssetFavoriteForClerkUser(input: {
     data: {
       metadata: {
         ...metadata,
-        favorite: input.favorite,
+        saved: input.saved,
       } as Prisma.InputJsonValue,
     },
     select: { id: true },
@@ -572,7 +572,7 @@ export async function setStudioAssetFavoriteForClerkUser(input: {
 
   return {
     assetId: asset.id,
-    favorite: input.favorite,
+    saved: input.saved,
     project: await getStudioProjectDetailForClerkUser(input.clerkUserId, asset.projectId),
   };
 }
@@ -635,7 +635,7 @@ export async function resetStudioProjectForClerkUser(input: {
   }
 
   const unsavedAssetIds = project.assets
-    .filter((asset) => !readAssetMetadataFlag(asset.metadata, "favorite"))
+    .filter((asset) => !readAssetSavedFlag(asset.metadata))
     .map((asset) => asset.id);
 
   await prisma.$transaction([
@@ -942,6 +942,14 @@ function asRecord(value: unknown) {
 
 function readAssetMetadataFlag(value: unknown, key: string) {
   return Boolean(asRecord(value)[key]);
+}
+
+function readAssetSavedFlag(value: unknown) {
+  const metadata = asRecord(value);
+  if (typeof metadata.saved === "boolean") {
+    return metadata.saved;
+  }
+  return Boolean(metadata.favorite);
 }
 
 function readAssetMetadataString(value: unknown, key: string) {

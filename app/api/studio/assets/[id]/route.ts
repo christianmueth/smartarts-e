@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { deleteStudioAssetForClerkUser, setStudioAssetFavoriteForClerkUser } from "@/lib/studio";
+import { deleteStudioAssetForClerkUser, setStudioAssetSavedForClerkUser } from "@/lib/studio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,14 +13,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const { id } = await ctx.params;
-    const body = (await req.json()) as { favorite?: boolean };
-    const result = await setStudioAssetFavoriteForClerkUser({
+    const body = (await req.json()) as { saved?: boolean; favorite?: boolean };
+    const result = await setStudioAssetSavedForClerkUser({
       clerkUserId,
       assetId: id,
-      favorite: Boolean(body.favorite),
+      saved: Boolean(body.saved ?? body.favorite),
     });
 
-    return NextResponse.json({ ok: true, assetId: result.assetId, favorite: result.favorite, project: result.project });
+    return NextResponse.json({ ok: true, assetId: result.assetId, saved: result.saved, project: result.project });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Asset update failed." }, { status: 400 });
   }

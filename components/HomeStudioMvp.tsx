@@ -43,7 +43,7 @@ type ProjectDetail = {
     width: number | null;
     height: number | null;
     tags: string[];
-    isFavorite: boolean;
+    isSaved: boolean;
     mode: string | null;
     createdAt: string;
   }>;
@@ -235,7 +235,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       const response = await fetch(`/api/studio/assets/${assetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ favorite: shouldSave }),
+        body: JSON.stringify({ saved: shouldSave }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || !data?.project) {
@@ -264,7 +264,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
 
     const unsavedAssetIds = uniqueAssetIds.filter((assetId) => {
       const asset = visibleAssets.find((item) => item.id === assetId);
-      return asset && !asset.isFavorite;
+      return asset && !asset.isSaved;
     });
 
     if (!unsavedAssetIds.length) {
@@ -491,14 +491,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   </button>
                   <button
                     type="button"
-                    onClick={() => void saveToLibrary(asset.id, !asset.isFavorite)}
+                    onClick={() => void saveToLibrary(asset.id, !asset.isSaved)}
                     disabled={busyAction === `save:${asset.id}`}
-                    className={asset.isFavorite
+                    className={asset.isSaved
                       ? "rounded-full bg-stone-950 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
                       : "rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
                     }
                   >
-                    {busyAction === `save:${asset.id}` ? "Saving..." : asset.isFavorite ? "Saved" : "Save"}
+                    {busyAction === `save:${asset.id}` ? "Saving..." : asset.isSaved ? "Saved" : "Save"}
                   </button>
                 </div>
               </article>
@@ -519,14 +519,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isFavorite)}
+                      onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isSaved)}
                       disabled={busyAction === `save:${selectedAsset.id}`}
-                      className={selectedAsset.isFavorite
+                      className={selectedAsset.isSaved
                         ? "rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                         : "rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
                       }
                     >
-                      {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isFavorite ? "Saved to library" : "Save to library"}
+                      {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isSaved ? "Saved to library" : "Save to library"}
                     </button>
                     <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
                       Download

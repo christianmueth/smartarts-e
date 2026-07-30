@@ -82,7 +82,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
       const saveResponse = await fetch(`/api/studio/assets/${createdAssetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ favorite: true }),
+        body: JSON.stringify({ saved: true }),
       });
       const saveData = await saveResponse.json().catch(() => null);
       if (!saveResponse.ok || !saveData?.ok || !saveData?.project) {
@@ -96,7 +96,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
           sourceUrl: string;
           prompt: string | null;
           enhancedPrompt: string | null;
-          isFavorite: boolean;
+          isSaved: boolean;
           createdAt: string;
         }>;
       };
