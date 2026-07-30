@@ -432,6 +432,7 @@ export async function runStudioProjectCommand(input: {
     throw new Error("A prompt or edit instruction is required.");
   }
   const referenceImageDataUrl = cleanDataUrl(input.referenceImageDataUrl);
+  const hasReferenceImageUpload = Boolean(referenceImageDataUrl);
   const resultCount = clampResultCount(input.resultCount);
 
   const referenceAsset = input.assetId
@@ -441,6 +442,7 @@ export async function runStudioProjectCommand(input: {
     project,
     content,
     referenceAsset,
+    hasReferenceImageUpload,
     includeRecentAssets: Boolean(referenceImageDataUrl || referenceAsset),
     preferredMode: input.preferredMode,
   });
@@ -689,6 +691,7 @@ async function planStudioCommand(input: {
   };
   content: string;
   referenceAsset: { title: string; prompt: string | null; enhancedPrompt: string | null; tags: string[] } | null;
+  hasReferenceImageUpload: boolean;
   includeRecentAssets: boolean;
   preferredMode?: "generate" | "edit";
 }): Promise<StudioCommandPlan> {
@@ -702,6 +705,9 @@ async function planStudioCommand(input: {
           input.preferredMode
             ? `Treat the user's latest turn as ${input.preferredMode}, not chat.`
             : "Classify the user's latest turn as generate, edit, or chat.",
+          input.hasReferenceImageUpload
+            ? "A fresh reference image upload is attached to this request. When producing a prompt, explicitly treat that uploaded image as the source image and preserve the core subject and composition unless the user asks to change them."
+            : "",
           keepProjectContext
             ? "Use project context only when it materially helps the current request."
             : "For this request, ignore prior project history and base the output only on the latest user instruction.",
@@ -720,6 +726,7 @@ async function planStudioCommand(input: {
           recentMessages: keepProjectContext ? input.project.messages.slice(0, 6) : [],
           recentAssets: input.includeRecentAssets ? input.project.assets.slice(0, 3) : [],
           referenceAsset: input.referenceAsset,
+          hasReferenceImageUpload: input.hasReferenceImageUpload,
           latestUserInstruction: input.content,
         }),
       },
@@ -737,7 +744,7 @@ async function planStudioCommand(input: {
         mode,
         title: cleanText(parsed.title, 120) || fallbackTitle(input.content),
         assistantReply: cleanText(parsed.assistantReply, 280) || fallbackAssistantReply(mode),
-        prompt: cleanText(parsed.prompt, 1600) || fallbackPrompt(input.content, mode, input.referenceAsset),
+        prompt: cleanText(parsed.prompt, 1600) || fallbackPrompt(input.content, mode, input.referenceAsset, input.hasReferenceImageUpload),
         tags: normalizeTags(parsed.tags),
       };
     } catch {
@@ -745,12 +752,12 @@ async function planStudioCommand(input: {
     }
   }
 
-  const mode = input.preferredMode || inferCommandMode(input.content, Boolean(input.referenceAsset));
+  const mode = input.preferredMode || inferCommandMode(input.content, Boolean(input.referenceAsset || input.hasReferenceImageUpload));
   return {
     mode,
     title: fallbackTitle(input.content),
     assistantReply: fallbackAssistantReply(mode),
-    prompt: fallbackPrompt(input.content, mode, input.referenceAsset),
+    prompt: fallbackPrompt(input.content, mode, input.referenceAsset, input.hasReferenceImageUpload),
     tags: normalizeTags(input.content.split(/[^a-zA-Z0-9]+/g).filter(Boolean).slice(0, 6)),
   };
 }
@@ -780,16 +787,27 @@ function fallbackAssistantReply(mode: "generate" | "edit" | "chat") {
 function fallbackPrompt(
   content: string,
   mode: "generate" | "edit" | "chat",
-  referenceAsset: { title: string; prompt: string | null; enhancedPrompt: string | null; tags: string[] } | null
+  referenceAsset: { title: string; prompt: string | null; enhancedPrompt: string | null; tags: string[] } | null,
+  hasReferenceImageUpload: boolean
 ) {
   if (mode === "chat") return content;
   if (mode === "edit") {
     return [
       "Apply this art-direction edit to the reference image while preserving the main subject, camera framing, and overall composition unless explicitly changed.",
-      `Reference asset: ${referenceAsset?.title || "latest asset"}`,
-      `Reference prompt: ${referenceAsset?.enhancedPrompt || referenceAsset?.prompt || "none recorded"}`,
+      `Reference source: ${hasReferenceImageUpload ? "uploaded reference image" : referenceAsset?.title || "latest asset"}`,
+      `Reference prompt: ${referenceAsset?.enhancedPrompt || referenceAsset?.prompt || (hasReferenceImageUpload ? "not available for uploaded reference" : "none recorded")}`,
       `Requested change: ${content}`,
       "Keep the output polished, commercially usable, and visually coherent.",
+    ].join("\n");
+  }
+
+  if (hasReferenceImageUpload || referenceAsset) {
+    return [
+      "Use the provided reference image as the source image for a derivative generation.",
+      "Preserve the main subject, framing, and visual identity unless the instruction explicitly changes them.",
+      `Reference source: ${hasReferenceImageUpload ? "uploaded reference image" : referenceAsset?.title || "latest asset"}`,
+      `User request: ${content}`,
+      "Keep the output polished, campaign-ready, and visually coherent with the source image.",
     ].join("\n");
   }
 
