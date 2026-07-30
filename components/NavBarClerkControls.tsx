@@ -11,7 +11,7 @@ export default function NavBarClerkControls() {
   if (!hasClerkClient) {
     return (
       <>
-        <Link href="/easy-easel" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
+        <Link href="/editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Easy Easel
         </Link>
         <Link href="/app/billing" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
@@ -24,7 +24,7 @@ export default function NavBarClerkControls() {
   return (
     <>
       <SignedIn>
-        <Link href="/easy-easel" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
+        <Link href="/editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Easy Easel
         </Link>
         <Link href="/library" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">

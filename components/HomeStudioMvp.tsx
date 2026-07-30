@@ -400,7 +400,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
         <section className="rounded-[2rem] border border-pink-200/80 bg-white/78 p-5 shadow-[0_18px_60px_rgba(255,129,181,0.18)] backdrop-blur md:p-6">
           <div className="space-y-3">
             <div className="inline-flex w-fit rounded-full border border-yellow-200 bg-yellow-100/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
-              Bubblegum Studio
+              Studio
             </div>
             <h1 className="text-3xl font-semibold tracking-tight text-[#7a1f4f] md:text-4xl">Create</h1>
             <textarea

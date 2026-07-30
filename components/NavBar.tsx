@@ -9,8 +9,8 @@ export default function NavBar() {
     <header className="sticky top-0 z-50 border-b border-pink-200/80 bg-[linear-gradient(90deg,rgba(255,246,205,0.82),rgba(255,235,246,0.84),rgba(255,248,216,0.82))] backdrop-blur-xl">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
         <Link href="/" className="flex items-center gap-3 text-lg font-semibold tracking-[-0.02em] text-[#7a1f4f]">
-          <Image src="/smartarts-e_logo.png" alt="SmartArts" width={96} height={96} className="h-10 w-10 rounded-2xl border border-pink-200 object-cover shadow-[0_10px_24px_rgba(255,170,205,0.28)]" />
-          <span>SmartArts</span>
+          <Image src="/smartarts-e_logo.png" alt="SmartArts-E" width={96} height={96} className="h-10 w-10 rounded-2xl border border-pink-200 object-cover shadow-[0_10px_24px_rgba(255,170,205,0.28)]" />
+          <span>SmartArts-E</span>
         </Link>
 
         <div className="flex items-center gap-4">
