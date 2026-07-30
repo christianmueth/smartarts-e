@@ -524,6 +524,86 @@ export async function setStudioAssetFavoriteForClerkUser(input: {
   };
 }
 
+export async function deleteStudioAssetForClerkUser(input: {
+  clerkUserId: string;
+  assetId: string;
+}) {
+  const asset = await prisma.projectAsset.findFirst({
+    where: {
+      id: input.assetId,
+      project: { user: { clerkUserId: input.clerkUserId } },
+    },
+    select: {
+      id: true,
+      projectId: true,
+    },
+  });
+
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+
+  await prisma.projectAsset.delete({
+    where: { id: asset.id },
+    select: { id: true },
+  });
+
+  await prisma.project.update({
+    where: { id: asset.projectId },
+    data: { lastActivityAt: new Date() },
+    select: { id: true },
+  });
+
+  return {
+    assetId: asset.id,
+    project: await getStudioProjectDetailForClerkUser(input.clerkUserId, asset.projectId),
+  };
+}
+
+export async function resetStudioProjectForClerkUser(input: {
+  clerkUserId: string;
+  projectId: string;
+}) {
+  const project = await prisma.project.findFirst({
+    where: { id: input.projectId, user: { clerkUserId: input.clerkUserId } },
+    select: {
+      id: true,
+      assets: {
+        select: {
+          id: true,
+          metadata: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+
+  const unsavedAssetIds = project.assets
+    .filter((asset) => !readAssetMetadataFlag(asset.metadata, "favorite"))
+    .map((asset) => asset.id);
+
+  await prisma.$transaction([
+    prisma.projectMessage.deleteMany({ where: { projectId: project.id } }),
+    prisma.projectAsset.deleteMany({ where: { id: { in: unsavedAssetIds } } }),
+    prisma.project.update({
+      where: { id: project.id },
+      data: {
+        lastActivityAt: new Date(),
+        searchText: buildSearchText(),
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    project: await getStudioProjectDetailForClerkUser(input.clerkUserId, project.id),
+    deletedAssetCount: unsavedAssetIds.length,
+  };
+}
+
 function mapProjectSummary(project: {
   id: string;
   name: string;

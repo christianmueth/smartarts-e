@@ -64,7 +64,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   const [referenceImageName, setReferenceImageName] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(initialProject?.assets[0]?.id || null);
   const [editorDraft, setEditorDraft] = useState("");
-  const [busyAction, setBusyAction] = useState<"generate" | "edit" | "variation" | `favorite:${string}` | null>(null);
+  const [busyAction, setBusyAction] = useState<"generate" | "edit" | "variation" | "reset" | `save:${string}` | `delete:${string}` | null>(null);
   const [loadingProject, setLoadingProject] = useState(false);
   const [currentBatchIds, setCurrentBatchIds] = useState<string[]>([]);
 
@@ -201,6 +201,107 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
     }
   }
 
+  function syncProject(project: ProjectDetail | null) {
+    setActiveProject(project);
+    if (!project) return;
+    setActiveProjectId(project.id);
+    setProjects((current) => {
+      const summary: ProjectSummary = {
+        id: project.id,
+        name: project.name,
+        brief: project.brief,
+        visualDirection: project.visualDirection,
+        updatedAt: project.updatedAt,
+        lastActivityAt: project.lastActivityAt,
+        assetCount: project.assetCount,
+        messageCount: project.messageCount,
+      };
+      return [summary, ...current.filter((item) => item.id !== project.id)];
+    });
+  }
+
+  async function saveToLibrary(assetId: string, shouldSave: boolean) {
+    const toastId = toast.loading(shouldSave ? "Saving to library..." : "Removing from library...");
+    setBusyAction(`save:${assetId}`);
+    try {
+      const response = await fetch(`/api/studio/assets/${assetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: shouldSave }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.project) {
+        throw new Error(data?.error || "Library update failed.");
+      }
+      syncProject(data.project as ProjectDetail);
+      toast.success(shouldSave ? "Saved to library." : "Removed from library.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Library update failed.", { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function deleteAsset(assetId: string) {
+    const toastId = toast.loading("Deleting image...");
+    setBusyAction(`delete:${assetId}`);
+    try {
+      const response = await fetch(`/api/studio/assets/${assetId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "Image deletion failed.");
+      }
+      const nextProject = (data?.project || null) as ProjectDetail | null;
+      syncProject(nextProject);
+      setCurrentBatchIds((current) => current.filter((id) => id !== assetId));
+      setSelectedAssetId(nextProject?.assets[0]?.id || null);
+      toast.success("Image deleted.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image deletion failed.", { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function resetProject() {
+    if (!activeProjectId) {
+      setPrompt("");
+      setReferenceImageDataUrl(null);
+      setReferenceImageName(null);
+      setSelectedAssetId(null);
+      setEditorDraft("");
+      setCurrentBatchIds([]);
+      return;
+    }
+
+    const toastId = toast.loading("Resetting workspace...");
+    setBusyAction("reset");
+    try {
+      const response = await fetch(`/api/studio/projects/${activeProjectId}/reset`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.project) {
+        throw new Error(data?.error || "Project reset failed.");
+      }
+      const project = data.project as ProjectDetail;
+      syncProject(project);
+      setCurrentBatchIds([]);
+      setSelectedAssetId(project.assets[0]?.id || null);
+      setPrompt("");
+      setReferenceImageDataUrl(null);
+      setReferenceImageName(null);
+      setEditorDraft("");
+      toast.success(data.deletedAssetCount ? `Reset complete. ${data.deletedAssetCount} unsaved ${data.deletedAssetCount === 1 ? "image" : "images"} removed.` : "Reset complete.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Project reset failed.", { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleReferenceUpload(file: File | null) {
     if (!file) {
       setReferenceImageDataUrl(null);
@@ -262,6 +363,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   </button>
                 </SignInButton>
               )}
+              <button
+                type="button"
+                onClick={() => void resetProject()}
+                disabled={busyAction !== null}
+                className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+              >
+                {busyAction === "reset" ? "Resetting..." : "Reset"}
+              </button>
             </div>
             {referenceImageDataUrl ? (
               <img src={referenceImageDataUrl} alt={referenceImageName || "Reference image"} className="h-28 w-28 rounded-2xl border border-stone-200 object-cover" />
@@ -303,6 +412,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
+                    onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isFavorite)}
+                    disabled={busyAction === `save:${selectedAsset.id}`}
+                    className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                  >
+                    {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isFavorite ? "Saved" : "Save to library"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void runCommand("variation", "Create four variations of this image. Keep the core subject and composition while exploring new treatments.", selectedAsset.id, 4)}
                     disabled={busyAction !== null}
                     className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
@@ -311,6 +428,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   </button>
                   <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
                     Download
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteAsset(selectedAsset.id)}
+                    disabled={busyAction === `delete:${selectedAsset.id}`}
+                    className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                  >
+                    {busyAction === `delete:${selectedAsset.id}` ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </div>
