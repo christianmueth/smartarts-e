@@ -377,12 +377,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       setReferenceImageName(null);
       return;
     }
-    const reader = new FileReader();
-    const nextValue = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Reference image could not be read."));
-      reader.readAsDataURL(file);
-    });
+    const nextValue = await readReferenceImageDataUrl(file);
     setReferenceImageDataUrl(nextValue);
     setReferenceImageName(file.name);
   }
@@ -464,7 +459,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   disabled={busyAction !== null}
                   className="rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-sm font-medium text-pink-700 transition hover:bg-pink-100 disabled:opacity-60"
                 >
-                  {busyAction === "reset" ? "Clearing..." : "New session"}
+                  {busyAction === "reset" ? "Clearing..." : "Clear session"}
                 </button>
               ) : null}
               {results.length ? (
@@ -602,4 +597,44 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
 
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "smartarts-image";
+}
+
+async function readReferenceImageDataUrl(file: File) {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImageElement(originalDataUrl);
+  const maxDimension = 1024;
+  const scale = Math.min(1, maxDimension / Math.max(image.width || 1, image.height || 1));
+
+  if (scale >= 1 && file.size <= 900_000) {
+    return originalDataUrl;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return originalDataUrl;
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+function readFileAsDataUrl(file: File) {
+  const reader = new FileReader();
+  return new Promise<string>((resolve, reject) => {
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Reference image could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Reference image could not be processed."));
+    image.src = src;
+  });
 }

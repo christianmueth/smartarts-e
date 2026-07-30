@@ -203,6 +203,28 @@ export async function createUploadedEditorAssetForClerkUser(input: {
   });
 }
 
+export async function saveEditorSnapshotAssetForClerkUser(input: {
+  clerkUserId: string;
+  title: string;
+  imageUrl: string;
+  mimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+}) {
+  return createEditorAssetRecordForClerkUser({
+    clerkUserId: input.clerkUserId,
+    title: input.title,
+    imageUrl: input.imageUrl,
+    mimeType: input.mimeType || "image/png",
+    assetType: "edited",
+    width: input.width ?? null,
+    height: input.height ?? null,
+    prompt: "Easy Easel canvas snapshot",
+    sourceAssetId: null,
+    saved: true,
+  });
+}
+
 export async function generateEditorAssetsForClerkUser(input: {
   clerkUserId: string;
   prompt: string;
@@ -289,6 +311,7 @@ async function createEditorAssetRecordForClerkUser(input: {
   height: number | null;
   prompt: string | null;
   sourceAssetId: string | null;
+  saved?: boolean;
 }) {
   const libraryProjectId = await ensureEditorLibraryProjectId(input.clerkUserId);
 
@@ -308,6 +331,7 @@ async function createEditorAssetRecordForClerkUser(input: {
       metadata: {
         assetType: input.assetType,
         editorVisible: true,
+        saved: Boolean(input.saved),
         sourceAssetId: input.sourceAssetId,
       } as Prisma.InputJsonValue,
     },

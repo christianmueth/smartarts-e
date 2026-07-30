@@ -36,7 +36,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [brushSize, setBrushSize] = useState(8);
   const [zoom, setZoom] = useState(0.72);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
+  const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
   const [historyState, setHistoryState] = useState(() => ({
     snapshots: [serializeDocument(initialProject?.canvas || createEmptyEditorDocument())],
@@ -548,6 +548,42 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     }
   }
 
+  async function saveCanvasToLibrary() {
+    const imageDataUrl = getStageDataUrl(stageRef.current, "image/png", zoom);
+    if (!imageDataUrl) {
+      toast.error("Canvas export failed.");
+      return;
+    }
+
+    const toastId = toast.loading("Saving image to library...");
+    setBusyAction("save-library");
+    try {
+      const response = await fetch("/api/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `${projectName.trim() || "Easy Easel"} canvas`,
+          imageDataUrl,
+          mimeType: "image/png",
+          width: documentRef.current.width,
+          height: documentRef.current.height,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.asset) {
+        throw new Error(data?.error || "Library save failed.");
+      }
+
+      const asset = data.asset as EditorAsset;
+      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+      toast.success("Saved to library.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Library save failed.", { id: toastId });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function loadProject(projectId: string) {
     if (!projectId) return;
     const toastId = toast.loading("Loading project...");
@@ -632,6 +668,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               </button>
               <button type="button" onClick={() => void saveProject()} disabled={busyAction === "save"} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.28)] disabled:opacity-60">
                 {busyAction === "save" ? "Saving..." : "Save project"}
+              </button>
+              <button type="button" onClick={() => void saveCanvasToLibrary()} disabled={busyAction === "save-library"} className="rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-100 disabled:opacity-60">
+                {busyAction === "save-library" ? "Saving..." : "Save to library"}
               </button>
               <button type="button" onClick={() => exportImage("png")} className="rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-100">
                 Export PNG
