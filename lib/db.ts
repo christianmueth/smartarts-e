@@ -55,6 +55,33 @@ export function isMissingUserTableError(error: unknown) {
   );
 }
 
+export function isMissingTableOrColumnError(error: unknown, names?: string[]) {
+  const code = typeof (error as { code?: unknown } | null)?.code === "string"
+    ? String((error as { code?: string }).code)
+    : "";
+  const table = String((error as { meta?: { table?: unknown } } | null)?.meta?.table || "");
+  const column = String((error as { meta?: { column?: unknown } } | null)?.meta?.column || "");
+  const message = String((error as { message?: unknown } | null)?.message || "");
+  const needles = Array.isArray(names) ? names.filter(Boolean) : [];
+
+  const looksMissing =
+    code === "P2021" ||
+    code === "P2022" ||
+    /does not exist/i.test(message) ||
+    /Unknown arg/i.test(message) ||
+    /Unknown field/i.test(message) ||
+    /column .* does not exist/i.test(message);
+
+  if (!looksMissing) return false;
+  if (!needles.length) return true;
+
+  return needles.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(escaped, "i");
+    return pattern.test(table) || pattern.test(column) || pattern.test(message);
+  });
+}
+
 export async function safeUpsertUser<T extends Prisma.UserSelect>(clerkUserId: string, select: T) {
   try {
     return await prisma.user.upsert({

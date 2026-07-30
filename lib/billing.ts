@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { prisma, safeUpsertUser } from "@/lib/db";
+import { isMissingTableOrColumnError, prisma, safeUpsertUser } from "@/lib/db";
 import { getStripe } from "@/lib/stripe";
 
 const PREMIUM_ACTIVE_STATUSES = new Set(["active", "trialing"]);
@@ -19,16 +19,31 @@ export function hasPremiumAccessFromValues(status: string | null | undefined, ac
 }
 
 export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
-  const user = await prisma.user.findUnique({
-    where: { clerkUserId },
-    select: {
-      premiumStatus: true,
-      premiumAccessUntil: true,
-      stripeCustomerId: true,
-      stripeSubscriptionId: true,
-      stripePriceId: true,
-    },
-  });
+  let user: {
+    premiumStatus: string | null;
+    premiumAccessUntil: Date | null;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    stripePriceId: string | null;
+  } | null = null;
+
+  try {
+    user = await prisma.user.findUnique({
+      where: { clerkUserId },
+      select: {
+        premiumStatus: true,
+        premiumAccessUntil: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        stripePriceId: true,
+      },
+    });
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error, ["User", "premiumStatus", "premiumAccessUntil", "stripeCustomerId", "stripeSubscriptionId", "stripePriceId"])) {
+      throw error;
+    }
+    console.warn("[billing] Billing fields unavailable; returning free-tier snapshot");
+  }
 
   const premiumStatus = user?.premiumStatus ?? null;
   const premiumAccessUntil = user?.premiumAccessUntil ?? null;
@@ -133,10 +148,18 @@ async function resolveClerkUserId(customerId: string | null) {
     return "";
   }
 
-  const existingUser = await prisma.user.findFirst({
-    where: { stripeCustomerId: customerId },
-    select: { clerkUserId: true },
-  });
+  let existingUser: { clerkUserId: string } | null = null;
+  try {
+    existingUser = await prisma.user.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { clerkUserId: true },
+    });
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error, ["User", "stripeCustomerId"])) {
+      throw error;
+    }
+    return "";
+  }
   if (existingUser?.clerkUserId) {
     return existingUser.clerkUserId;
   }

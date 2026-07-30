@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { callLLMResult } from "@/lib/aiClient";
-import { prisma, safeUpsertUser } from "@/lib/db";
+import { isMissingTableOrColumnError, prisma, safeUpsertUser } from "@/lib/db";
 
 const PROJECT_LIST_LIMIT = 24;
 const PROJECT_MESSAGE_LIMIT = 60;
@@ -75,27 +75,54 @@ export type StudioProjectDetail = {
 };
 
 export async function listStudioProjectsForClerkUser(clerkUserId: string): Promise<StudioProjectSummary[]> {
-  const user = await prisma.user.findUnique({
-    where: { clerkUserId },
-    select: { id: true },
-  });
+  let user: { id: string } | null = null;
+  try {
+    user = await prisma.user.findUnique({
+      where: { clerkUserId },
+      select: { id: true },
+    });
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error, ["User"])) {
+      throw error;
+    }
+    console.warn("[studio] User table unavailable; returning empty project list");
+    return [];
+  }
 
   if (!user) return [];
 
-  const projects = await prisma.project.findMany({
-    where: { userId: user.id },
-    orderBy: [{ lastActivityAt: "desc" }, { updatedAt: "desc" }],
-    take: PROJECT_LIST_LIMIT,
-    select: {
-      id: true,
-      name: true,
-      brief: true,
-      visualDirection: true,
-      updatedAt: true,
-      lastActivityAt: true,
-      _count: { select: { assets: true, messages: true } },
-    },
-  });
+  let projects: Array<{
+    id: string;
+    name: string;
+    brief: string | null;
+    visualDirection: string | null;
+    updatedAt: Date;
+    lastActivityAt: Date;
+    _count: { assets: number; messages: number };
+  }> = [];
+
+  try {
+    projects = await prisma.project.findMany({
+      where: { userId: user.id },
+      orderBy: [{ lastActivityAt: "desc" }, { updatedAt: "desc" }],
+      take: PROJECT_LIST_LIMIT,
+      select: {
+        id: true,
+        name: true,
+        brief: true,
+        visualDirection: true,
+        updatedAt: true,
+        lastActivityAt: true,
+        _count: { select: { assets: true, messages: true } },
+      },
+    });
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error, ["Project", "ProjectAsset", "ProjectMessage", "lastActivityAt"])) {
+      throw error;
+    }
+    console.warn("[studio] Project tables unavailable; returning empty project list");
+    return [];
+  }
 
   return projects.map(mapProjectSummary);
 }
@@ -106,61 +133,82 @@ export async function getStudioProjectDetailForClerkUser(
   assetQuery?: string | null
 ): Promise<StudioProjectDetail | null> {
   const trimmedQuery = cleanText(assetQuery, 120);
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      user: { clerkUserId },
-    },
-    select: {
-      id: true,
-      name: true,
-      brief: true,
-      visualDirection: true,
-      status: true,
-      updatedAt: true,
-      lastActivityAt: true,
-      messages: {
-        orderBy: { createdAt: "asc" },
-        take: PROJECT_MESSAGE_LIMIT,
-        select: {
-          id: true,
-          role: true,
-          content: true,
-          commandType: true,
-          createdAt: true,
-        },
+  let project: {
+    id: string;
+    name: string;
+    brief: string | null;
+    visualDirection: string | null;
+    status: string;
+    updatedAt: Date;
+    lastActivityAt: Date;
+    messages: Array<{ id: string; role: string; content: string; commandType: string | null; createdAt: Date }>;
+    assets: Array<{ id: string; kind: string; title: string; sourceUrl: string; prompt: string | null; enhancedPrompt: string | null; mimeType: string | null; width: number | null; height: number | null; tags: string[]; createdAt: Date }>;
+    _count: { assets: number; messages: number };
+  } | null = null;
+
+  try {
+    project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        user: { clerkUserId },
       },
-      assets: {
-        where: trimmedQuery
-          ? {
-              OR: [
-                { title: { contains: trimmedQuery, mode: "insensitive" } },
-                { prompt: { contains: trimmedQuery, mode: "insensitive" } },
-                { enhancedPrompt: { contains: trimmedQuery, mode: "insensitive" } },
-                { searchText: { contains: trimmedQuery, mode: "insensitive" } },
-                { tags: { hasSome: trimmedQuery.split(/\s+/).filter(Boolean).slice(0, 6) } },
-              ],
-            }
-          : undefined,
-        orderBy: { createdAt: "desc" },
-        take: PROJECT_ASSET_LIMIT,
-        select: {
-          id: true,
-          kind: true,
-          title: true,
-          sourceUrl: true,
-          prompt: true,
-          enhancedPrompt: true,
-          mimeType: true,
-          width: true,
-          height: true,
-          tags: true,
-          createdAt: true,
+      select: {
+        id: true,
+        name: true,
+        brief: true,
+        visualDirection: true,
+        status: true,
+        updatedAt: true,
+        lastActivityAt: true,
+        messages: {
+          orderBy: { createdAt: "asc" },
+          take: PROJECT_MESSAGE_LIMIT,
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            commandType: true,
+            createdAt: true,
+          },
         },
+        assets: {
+          where: trimmedQuery
+            ? {
+                OR: [
+                  { title: { contains: trimmedQuery, mode: "insensitive" } },
+                  { prompt: { contains: trimmedQuery, mode: "insensitive" } },
+                  { enhancedPrompt: { contains: trimmedQuery, mode: "insensitive" } },
+                  { searchText: { contains: trimmedQuery, mode: "insensitive" } },
+                  { tags: { hasSome: trimmedQuery.split(/\s+/).filter(Boolean).slice(0, 6) } },
+                ],
+              }
+            : undefined,
+          orderBy: { createdAt: "desc" },
+          take: PROJECT_ASSET_LIMIT,
+          select: {
+            id: true,
+            kind: true,
+            title: true,
+            sourceUrl: true,
+            prompt: true,
+            enhancedPrompt: true,
+            mimeType: true,
+            width: true,
+            height: true,
+            tags: true,
+            createdAt: true,
+          },
+        },
+        _count: { select: { assets: true, messages: true } },
       },
-      _count: { select: { assets: true, messages: true } },
-    },
-  });
+    });
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error, ["Project", "ProjectAsset", "ProjectMessage", "lastActivityAt", "searchText"])) {
+      throw error;
+    }
+    console.warn("[studio] Project tables unavailable; returning null project detail");
+    return null;
+  }
 
   if (!project) return null;
 
