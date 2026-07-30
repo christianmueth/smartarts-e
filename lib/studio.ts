@@ -381,11 +381,14 @@ export async function runStudioProjectCommand(input: {
   const referenceImageDataUrl = cleanDataUrl(input.referenceImageDataUrl);
   const resultCount = clampResultCount(input.resultCount);
 
-  const referenceAsset = project.assets.find((asset) => asset.id === input.assetId) ?? project.assets[0] ?? null;
+  const referenceAsset = input.assetId
+    ? project.assets.find((asset) => asset.id === input.assetId) ?? null
+    : null;
   const plan = await planStudioCommand({
     project,
     content,
     referenceAsset,
+    includeRecentAssets: Boolean(referenceImageDataUrl || referenceAsset),
   });
 
   await prisma.projectMessage.create({
@@ -552,6 +555,7 @@ async function planStudioCommand(input: {
   };
   content: string;
   referenceAsset: { title: string; prompt: string | null; enhancedPrompt: string | null; tags: string[] } | null;
+  includeRecentAssets: boolean;
 }): Promise<StudioCommandPlan> {
   const llmResult = await callLLMResult(
     [
@@ -573,7 +577,7 @@ async function planStudioCommand(input: {
           brief: input.project.brief,
           visualDirection: input.project.visualDirection,
           recentMessages: input.project.messages.slice(0, 6),
-          recentAssets: input.project.assets.slice(0, 3),
+          recentAssets: input.includeRecentAssets ? input.project.assets.slice(0, 3) : [],
           referenceAsset: input.referenceAsset,
           latestUserInstruction: input.content,
         }),
