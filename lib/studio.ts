@@ -401,6 +401,7 @@ export async function runStudioProjectCommand(input: {
   let assistantReply = plan.assistantReply;
   let createdAssetId: string | null = null;
   let createdAssetIds: string[] = [];
+  let imageFailureMessage: string | null = null;
 
   try {
     if (plan.mode === "generate" || plan.mode === "edit") {
@@ -443,7 +444,8 @@ export async function runStudioProjectCommand(input: {
         : assistantReply;
     }
   } catch (error) {
-    assistantReply = `${assistantReply} Image processing failed: ${error instanceof Error ? error.message : "unknown error"}`;
+    imageFailureMessage = error instanceof Error ? error.message : "Image processing failed.";
+    assistantReply = `${assistantReply} Image processing failed: ${imageFailureMessage}`;
   }
 
   await prisma.projectMessage.create({
@@ -467,6 +469,10 @@ export async function runStudioProjectCommand(input: {
     },
     select: { id: true },
   });
+
+  if (imageFailureMessage) {
+    throw new Error(imageFailureMessage);
+  }
 
   return {
     project: await getStudioProjectDetailForClerkUser(input.clerkUserId, project.id),
