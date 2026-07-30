@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SignInButton } from "@clerk/nextjs";
+import Image from "next/image";
 import { toast } from "sonner";
 
 type ProjectSummary = {
@@ -394,10 +395,26 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
         <section className="rounded-[2rem] border border-pink-200/80 bg-white/78 p-5 shadow-[0_18px_60px_rgba(255,129,181,0.18)] backdrop-blur md:p-6">
           <div className="space-y-3">
-            <div className="inline-flex w-fit rounded-full border border-yellow-200 bg-yellow-100/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
-              Studio
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-3">
+                <div className="inline-flex w-fit rounded-full border border-yellow-200 bg-yellow-100/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
+                  Studio
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-[#7a1f4f] md:text-4xl">Create</h1>
+              </div>
+              <div className="flex items-center justify-center md:justify-end">
+                <div className="rounded-[2rem] border border-pink-200 bg-[linear-gradient(180deg,_rgba(255,246,251,0.98),_rgba(255,248,216,0.95))] p-3 shadow-[0_18px_44px_rgba(255,170,205,0.28)]">
+                  <Image
+                    src="/smartarts-e_logo.png"
+                    alt="SmartArts-E"
+                    width={224}
+                    height={224}
+                    priority
+                    className="h-28 w-28 rounded-[1.5rem] object-cover md:h-36 md:w-36"
+                  />
+                </div>
+              </div>
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-[#7a1f4f] md:text-4xl">Create</h1>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
