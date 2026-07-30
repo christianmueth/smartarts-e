@@ -30,8 +30,8 @@ export default function NavBarClerkControls() {
         <Link href="/library" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Library
         </Link>
-        <Link href="/app/organization" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
-          Organization
+        <Link href="/app/premium-suite" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
+          Premium Suite
         </Link>
         <Link href="/app/billing" className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900 hover:bg-yellow-100">
           Billing
