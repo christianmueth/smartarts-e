@@ -627,9 +627,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   }
 
   const groupedAssets = useMemo(() => ({
-    upload: assets.filter((asset) => asset.type === "upload"),
+    upload: assets.filter((asset) => asset.type === "upload" && asset.isSaved),
     generated: assets.filter((asset) => asset.type === "generated" && asset.isSaved),
-    edited: assets.filter((asset) => asset.type === "edited"),
+    edited: assets.filter((asset) => asset.type === "edited" && asset.isSaved),
   }), [assets]);
 
   const canvasWidth = Math.round(document.width * zoom);
