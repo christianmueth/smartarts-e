@@ -46,6 +46,7 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 STRIPE_SECRET_KEY=sk_live_xxxxxxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxx
 STRIPE_PREMIUM_PRICE_ID=price_xxxxxxxxx
+STRIPE_ORGANIZATION_PRICE_ID=price_xxxxxxxxx
 NEXT_PUBLIC_APP_URL=https://YOUR-DOMAIN.com
 ```
 
@@ -53,7 +54,7 @@ Notes:
 
 - `OPENAI_API_KEY` is required for studio image generation and edit flows.
 - `OPENAI_BASE_URL` can point to any OpenAI-compatible endpoint.
-- Stripe currently gates premium image generation features.
+- Stripe currently gates paid image generation features and the higher Organization tier.
 
 ## Local Development
 

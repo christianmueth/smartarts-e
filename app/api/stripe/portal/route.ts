@@ -15,7 +15,7 @@ export async function POST() {
 
     const billing = await getBillingSnapshotForClerkUser(clerkUserId);
     if (!billing.stripeCustomerId) {
-      return NextResponse.json({ ok: false, error: "Start premium billing first before opening the billing portal." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Start paid billing first before opening the billing portal." }, { status: 400 });
     }
 
     const session = await getStripe().billingPortal.sessions.create({

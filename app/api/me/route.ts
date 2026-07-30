@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
-import { hasPremiumAccessFromValues } from "@/lib/billing";
+import { hasPremiumAccessFromValues, resolveBillingTier } from "@/lib/billing";
 
 export async function GET() {
   try {
@@ -13,6 +13,7 @@ export async function GET() {
     // Don't "select" fields you haven't migrated yet.
     // Fetch whole row (whatever columns exist), then read optional values safely.
     const user: any = await prisma.user.findFirst({ where: { clerkUserId: userId } });
+    const isPremium = hasPremiumAccessFromValues(user?.premiumStatus ?? null, user?.premiumAccessUntil ?? null);
 
     const goal = user?.dailyGoal ?? 50;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -30,7 +31,8 @@ export async function GET() {
       streak: user?.studyStreak ?? 0,
       xpToday,
       dailyGoal: goal,
-      isPremium: hasPremiumAccessFromValues(user?.premiumStatus ?? null, user?.premiumAccessUntil ?? null),
+      isPremium,
+      billingTier: resolveBillingTier(user?.stripePriceId ?? null, isPremium),
       premiumStatus: user?.premiumStatus ?? null,
       premiumAccessUntil: user?.premiumAccessUntil ?? null,
     });

@@ -2,6 +2,10 @@ import Stripe from "stripe";
 
 let stripeClient: Stripe | null = null;
 
+export const PAID_BILLING_TIERS = ["premium", "organization"] as const;
+
+export type PaidBillingTier = (typeof PAID_BILLING_TIERS)[number];
+
 export function isStripeConfigured() {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 }
@@ -33,6 +37,28 @@ export function getStripePremiumPriceId() {
     throw new Error("STRIPE_PREMIUM_PRICE_ID is not configured.");
   }
   return priceId;
+}
+
+export function getStripeOrganizationPriceId() {
+  const priceId = process.env.STRIPE_ORGANIZATION_PRICE_ID?.trim();
+  if (!priceId) {
+    throw new Error("STRIPE_ORGANIZATION_PRICE_ID is not configured.");
+  }
+  return priceId;
+}
+
+export function getStripeConfiguredPriceIds() {
+  return {
+    premium: process.env.STRIPE_PREMIUM_PRICE_ID?.trim() || null,
+    organization: process.env.STRIPE_ORGANIZATION_PRICE_ID?.trim() || null,
+  } satisfies Record<PaidBillingTier, string | null>;
+}
+
+export function getStripePriceIdForTier(tier: PaidBillingTier) {
+  if (tier === "organization") {
+    return getStripeOrganizationPriceId();
+  }
+  return getStripePremiumPriceId();
 }
 
 export function getAppUrl() {

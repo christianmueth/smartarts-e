@@ -1,8 +1,46 @@
 import type Stripe from "stripe";
 import { isMissingTableOrColumnError, prisma, safeUpsertUser } from "@/lib/db";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, getStripeConfiguredPriceIds, type PaidBillingTier } from "@/lib/stripe";
 
 const PREMIUM_ACTIVE_STATUSES = new Set(["active", "trialing"]);
+
+export type BillingTier = "free" | PaidBillingTier;
+
+export function parsePaidBillingTier(value: unknown): PaidBillingTier | null {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "organization") {
+    return "organization";
+  }
+  if (normalized === "premium") {
+    return "premium";
+  }
+  return null;
+}
+
+export function getPaidBillingTierFromPriceId(priceId: string | null | undefined): PaidBillingTier | null {
+  const normalized = String(priceId || "").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const configured = getStripeConfiguredPriceIds();
+  if (configured.organization && normalized === configured.organization) {
+    return "organization";
+  }
+  if (configured.premium && normalized === configured.premium) {
+    return "premium";
+  }
+
+  return null;
+}
+
+export function resolveBillingTier(priceId: string | null | undefined, hasPaidAccess: boolean): BillingTier {
+  if (!hasPaidAccess) {
+    return "free";
+  }
+
+  return getPaidBillingTierFromPriceId(priceId) ?? "premium";
+}
 
 export function hasPremiumAccessFromValues(status: string | null | undefined, accessUntil: Date | string | null | undefined) {
   const normalizedStatus = String(status || "").trim().toLowerCase();
@@ -47,14 +85,19 @@ export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
 
   const premiumStatus = user?.premiumStatus ?? null;
   const premiumAccessUntil = user?.premiumAccessUntil ?? null;
+  const stripePriceId = user?.stripePriceId ?? null;
+  const isPremium = hasPremiumAccessFromValues(premiumStatus, premiumAccessUntil);
+  const billingTier = resolveBillingTier(stripePriceId, isPremium);
 
   return {
     premiumStatus,
     premiumAccessUntil,
     stripeCustomerId: user?.stripeCustomerId ?? null,
     stripeSubscriptionId: user?.stripeSubscriptionId ?? null,
-    stripePriceId: user?.stripePriceId ?? null,
-    isPremium: hasPremiumAccessFromValues(premiumStatus, premiumAccessUntil),
+    stripePriceId,
+    isPremium,
+    billingTier,
+    isOrganization: billingTier === "organization",
   };
 }
 
