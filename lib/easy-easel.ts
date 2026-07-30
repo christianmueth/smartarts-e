@@ -139,6 +139,7 @@ export async function listEditorAssetsForClerkUser(clerkUserId: string): Promise
       kind: "image",
       project: {
         user: { clerkUserId },
+        status: EDITOR_LIBRARY_PROJECT_STATUS,
       },
     },
     orderBy: { createdAt: "desc" },
