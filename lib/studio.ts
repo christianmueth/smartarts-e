@@ -336,6 +336,7 @@ export async function runStudioProjectCommand(input: {
   assetId?: string | null;
   referenceImageDataUrl?: string | null;
   resultCount?: number;
+  preferredMode?: "generate" | "edit";
 }) {
   const project = await prisma.project.findFirst({
     where: { id: input.projectId, user: { clerkUserId: input.clerkUserId } },
@@ -389,6 +390,7 @@ export async function runStudioProjectCommand(input: {
     content,
     referenceAsset,
     includeRecentAssets: Boolean(referenceImageDataUrl || referenceAsset),
+    preferredMode: input.preferredMode,
   });
 
   await prisma.projectMessage.create({
@@ -636,6 +638,7 @@ async function planStudioCommand(input: {
   content: string;
   referenceAsset: { title: string; prompt: string | null; enhancedPrompt: string | null; tags: string[] } | null;
   includeRecentAssets: boolean;
+  preferredMode?: "generate" | "edit";
 }): Promise<StudioCommandPlan> {
   const llmResult = await callLLMResult(
     [
@@ -643,7 +646,9 @@ async function planStudioCommand(input: {
         role: "system",
         content: [
           "You are the creative operating system for an AI art studio.",
-          "Classify the user's latest turn as generate, edit, or chat.",
+          input.preferredMode
+            ? `Treat the user's latest turn as ${input.preferredMode}, not chat.`
+            : "Classify the user's latest turn as generate, edit, or chat.",
           "Generate a polished production-ready prompt when the mode is generate or edit.",
           "For edit, preserve the core subject and composition unless the instruction explicitly changes them.",
           "Keep the assistantReply concise and practical.",
@@ -671,11 +676,12 @@ async function planStudioCommand(input: {
   if (llmResult.ok) {
     try {
       const parsed = JSON.parse(llmResult.content) as StudioCommandPlan;
+      const mode = input.preferredMode || parsed.mode;
       return {
-        mode: parsed.mode,
+        mode,
         title: cleanText(parsed.title, 120) || fallbackTitle(input.content),
-        assistantReply: cleanText(parsed.assistantReply, 280) || fallbackAssistantReply(parsed.mode),
-        prompt: cleanText(parsed.prompt, 1600) || fallbackPrompt(input.content, parsed.mode, input.referenceAsset),
+        assistantReply: cleanText(parsed.assistantReply, 280) || fallbackAssistantReply(mode),
+        prompt: cleanText(parsed.prompt, 1600) || fallbackPrompt(input.content, mode, input.referenceAsset),
         tags: normalizeTags(parsed.tags),
       };
     } catch {
@@ -683,7 +689,7 @@ async function planStudioCommand(input: {
     }
   }
 
-  const mode = inferCommandMode(input.content, Boolean(input.referenceAsset));
+  const mode = input.preferredMode || inferCommandMode(input.content, Boolean(input.referenceAsset));
   return {
     mode,
     title: fallbackTitle(input.content),

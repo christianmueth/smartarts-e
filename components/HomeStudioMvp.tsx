@@ -161,6 +161,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
           assetId: assetId || null,
           referenceImageDataUrl,
           resultCount: resultCount || (kind === "generate" || kind === "variation" ? 4 : 1),
+          modeHint: kind === "edit" ? "edit" : "generate",
         }),
       });
       const data = await response.json().catch(() => null);

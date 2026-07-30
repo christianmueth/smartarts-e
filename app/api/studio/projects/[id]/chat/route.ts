@@ -14,7 +14,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const { id } = await ctx.params;
-    const body = (await req.json()) as { content?: string; assetId?: string; referenceImageDataUrl?: string; resultCount?: number };
+    const body = (await req.json()) as {
+      content?: string;
+      assetId?: string;
+      referenceImageDataUrl?: string;
+      resultCount?: number;
+      modeHint?: "generate" | "edit";
+    };
     const result = await runStudioProjectCommand({
       clerkUserId,
       projectId: id,
@@ -22,6 +28,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       assetId: body.assetId || null,
       referenceImageDataUrl: body.referenceImageDataUrl || null,
       resultCount: body.resultCount,
+      preferredMode: body.modeHint,
     });
 
     return NextResponse.json({ ok: true, project: result.project, createdAssetId: result.createdAssetId, createdAssetIds: result.createdAssetIds });
