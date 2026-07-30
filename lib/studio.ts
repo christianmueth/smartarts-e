@@ -70,6 +70,8 @@ export type StudioProjectDetail = {
     width: number | null;
     height: number | null;
     tags: string[];
+    isFavorite: boolean;
+    mode: string | null;
     createdAt: string;
   }>;
 };
@@ -196,6 +198,7 @@ export async function getStudioProjectDetailForClerkUser(
             width: true,
             height: true,
             tags: true,
+            metadata: true,
             createdAt: true,
           },
         },
@@ -240,6 +243,8 @@ export async function getStudioProjectDetailForClerkUser(
       width: asset.width,
       height: asset.height,
       tags: asset.tags,
+      isFavorite: readAssetMetadataFlag(asset.metadata, "favorite"),
+      mode: readAssetMetadataString(asset.metadata, "mode"),
       createdAt: asset.createdAt.toISOString(),
     })),
   };
@@ -329,6 +334,8 @@ export async function runStudioProjectCommand(input: {
   projectId: string;
   content: string;
   assetId?: string | null;
+  referenceImageDataUrl?: string | null;
+  resultCount?: number;
 }) {
   const project = await prisma.project.findFirst({
     where: { id: input.projectId, user: { clerkUserId: input.clerkUserId } },
@@ -371,6 +378,8 @@ export async function runStudioProjectCommand(input: {
   if (!content) {
     throw new Error("A prompt or edit instruction is required.");
   }
+  const referenceImageDataUrl = cleanDataUrl(input.referenceImageDataUrl);
+  const resultCount = clampResultCount(input.resultCount);
 
   const referenceAsset = project.assets.find((asset) => asset.id === input.assetId) ?? project.assets[0] ?? null;
   const plan = await planStudioCommand({
@@ -391,18 +400,25 @@ export async function runStudioProjectCommand(input: {
 
   let assistantReply = plan.assistantReply;
   let createdAssetId: string | null = null;
+  let createdAssetIds: string[] = [];
 
   try {
     if (plan.mode === "generate" || plan.mode === "edit") {
-      const image = plan.mode === "edit" && referenceAsset
-        ? await editStudioImage({ prompt: plan.prompt, sourceUrl: referenceAsset.sourceUrl })
-        : await generateStudioImage(plan.prompt);
+      const useReferenceImage = Boolean(referenceImageDataUrl || referenceAsset) && (
+        plan.mode === "edit" ||
+        /variation|variations|version|versions|remix/i.test(content) ||
+        Boolean(referenceImageDataUrl)
+      );
+      const sourceUrl = referenceImageDataUrl || referenceAsset?.sourceUrl || null;
+      const images = useReferenceImage && sourceUrl
+        ? await editStudioImages({ prompt: plan.prompt, sourceUrl, count: resultCount })
+        : await generateStudioImages(plan.prompt, resultCount);
 
-      const asset = await prisma.projectAsset.create({
+      const createdAssets = await Promise.all(images.map((image, index) => prisma.projectAsset.create({
         data: {
           projectId: project.id,
           kind: "image",
-          title: cleanText(plan.title, 120) || "Untitled asset",
+          title: buildAssetTitle(plan.title, index, images.length),
           sourceUrl: image.dataUrl,
           prompt: content,
           enhancedPrompt: plan.prompt,
@@ -410,15 +426,20 @@ export async function runStudioProjectCommand(input: {
           tags: normalizeTags(plan.tags),
           searchText: buildSearchText(plan.title, content, plan.prompt, ...plan.tags),
           metadata: {
-            mode: plan.mode,
+            mode: useReferenceImage ? "edit" : plan.mode,
+            favorite: false,
             referenceAssetId: referenceAsset?.id || null,
+            resultCount: images.length,
+            resultIndex: index,
+            usedReferenceUpload: Boolean(referenceImageDataUrl),
           } as Prisma.InputJsonValue,
         },
         select: { id: true },
-      });
-      createdAssetId = asset.id;
-      assistantReply = createdAssetId
-        ? `${assistantReply} I added a new asset to the library for export and further edits.`
+      })));
+      createdAssetIds = createdAssets.map((asset) => asset.id);
+      createdAssetId = createdAssetIds[0] || null;
+      assistantReply = createdAssetIds.length
+        ? `${assistantReply} I added ${createdAssetIds.length} image ${createdAssetIds.length === 1 ? "version" : "versions"} to the library for saving, editing, and download.`
         : assistantReply;
     }
   } catch (error) {
@@ -431,7 +452,9 @@ export async function runStudioProjectCommand(input: {
       role: "assistant",
       content: assistantReply,
       commandType: plan.mode,
-      metadata: createdAssetId ? ({ assetId: createdAssetId } as Prisma.InputJsonValue) : Prisma.JsonNull,
+      metadata: createdAssetIds.length
+        ? ({ assetId: createdAssetId, assetIds: createdAssetIds } as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
     },
     select: { id: true },
   });
@@ -448,6 +471,47 @@ export async function runStudioProjectCommand(input: {
   return {
     project: await getStudioProjectDetailForClerkUser(input.clerkUserId, project.id),
     createdAssetId,
+    createdAssetIds,
+  };
+}
+
+export async function setStudioAssetFavoriteForClerkUser(input: {
+  clerkUserId: string;
+  assetId: string;
+  favorite: boolean;
+}) {
+  const asset = await prisma.projectAsset.findFirst({
+    where: {
+      id: input.assetId,
+      project: { user: { clerkUserId: input.clerkUserId } },
+    },
+    select: {
+      id: true,
+      metadata: true,
+      projectId: true,
+    },
+  });
+
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+
+  const metadata = asRecord(asset.metadata);
+  await prisma.projectAsset.update({
+    where: { id: asset.id },
+    data: {
+      metadata: {
+        ...metadata,
+        favorite: input.favorite,
+      } as Prisma.InputJsonValue,
+    },
+    select: { id: true },
+  });
+
+  return {
+    assetId: asset.id,
+    favorite: input.favorite,
+    project: await getStudioProjectDetailForClerkUser(input.clerkUserId, asset.projectId),
   };
 }
 
@@ -584,70 +648,75 @@ function fallbackPrompt(
   ].join("\n");
 }
 
-async function generateStudioImage(prompt: string) {
+async function generateStudioImages(prompt: string, count: number) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
 
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
-  const response = await fetch(`${baseUrl}/images/generations`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      size: "1024x1024",
-      prompt,
-    }),
-  });
+  return Promise.all(Array.from({ length: count }, async () => {
+    const response = await fetch(`${baseUrl}/images/generations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        size: "1024x1024",
+        prompt,
+      }),
+    });
 
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const apiMessage = String((data as { error?: { message?: unknown } } | null)?.error?.message || "").trim();
-    throw new Error(apiMessage || "Image generation request failed.");
-  }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const apiMessage = String((data as { error?: { message?: unknown } } | null)?.error?.message || "").trim();
+      throw new Error(apiMessage || "Image generation request failed.");
+    }
 
-  const image = Array.isArray((data as { data?: Array<{ b64_json?: string; url?: string }> } | null)?.data)
-    ? (data as { data: Array<{ b64_json?: string; url?: string }> }).data[0]
-    : null;
+    const image = Array.isArray((data as { data?: Array<{ b64_json?: string; url?: string }> } | null)?.data)
+      ? (data as { data: Array<{ b64_json?: string; url?: string }> }).data[0]
+      : null;
 
-  return normalizeImagePayload(image);
+    return normalizeImagePayload(image);
+  }));
 }
 
-async function editStudioImage(input: { prompt: string; sourceUrl: string }) {
+async function editStudioImages(input: { prompt: string; sourceUrl: string; count: number }) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
 
   const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
   const imageBlob = await sourceUrlToBlob(input.sourceUrl);
-  const formData = new FormData();
-  formData.append("model", model);
-  formData.append("size", "1024x1024");
-  formData.append("prompt", input.prompt);
-  formData.append("image", imageBlob, "reference.png");
 
-  const response = await fetch(`${baseUrl}/images/edits`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: formData,
-  });
+  return Promise.all(Array.from({ length: input.count }, async () => {
+    const formData = new FormData();
+    formData.append("model", model);
+    formData.append("size", "1024x1024");
+    formData.append("prompt", input.prompt);
+    formData.append("image", imageBlob, "reference.png");
 
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const apiMessage = String((data as { error?: { message?: unknown } } | null)?.error?.message || "").trim();
-    throw new Error(apiMessage || "Image edit request failed.");
-  }
+    const response = await fetch(`${baseUrl}/images/edits`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
 
-  const image = Array.isArray((data as { data?: Array<{ b64_json?: string; url?: string }> } | null)?.data)
-    ? (data as { data: Array<{ b64_json?: string; url?: string }> }).data[0]
-    : null;
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const apiMessage = String((data as { error?: { message?: unknown } } | null)?.error?.message || "").trim();
+      throw new Error(apiMessage || "Image edit request failed.");
+    }
 
-  return normalizeImagePayload(image);
+    const image = Array.isArray((data as { data?: Array<{ b64_json?: string; url?: string }> } | null)?.data)
+      ? (data as { data: Array<{ b64_json?: string; url?: string }> }).data[0]
+      : null;
+
+    return normalizeImagePayload(image);
+  }));
 }
 
 async function normalizeImagePayload(image: { b64_json?: string; url?: string } | null | undefined) {
@@ -698,4 +767,33 @@ function normalizeTags(tags: unknown) {
 
 function buildSearchText(...parts: Array<string | null | undefined>) {
   return cleanText(parts.filter(Boolean).join(" "), 4000) || null;
+}
+
+function buildAssetTitle(title: string, index: number, total: number) {
+  const cleaned = cleanText(title, 110) || "Studio image";
+  return total > 1 ? `${cleaned} ${index + 1}` : cleaned;
+}
+
+function clampResultCount(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.max(1, Math.min(4, Math.floor(numeric)));
+}
+
+function cleanDataUrl(value: unknown) {
+  const cleaned = String(value || "").trim();
+  return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(cleaned) ? cleaned : null;
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readAssetMetadataFlag(value: unknown, key: string) {
+  return Boolean(asRecord(value)[key]);
+}
+
+function readAssetMetadataString(value: unknown, key: string) {
+  const candidate = asRecord(value)[key];
+  return typeof candidate === "string" ? candidate : null;
 }

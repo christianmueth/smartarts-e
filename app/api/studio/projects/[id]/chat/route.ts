@@ -14,15 +14,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const { id } = await ctx.params;
-    const body = (await req.json()) as { content?: string; assetId?: string };
+    const body = (await req.json()) as { content?: string; assetId?: string; referenceImageDataUrl?: string; resultCount?: number };
     const result = await runStudioProjectCommand({
       clerkUserId,
       projectId: id,
       content: body.content || "",
       assetId: body.assetId || null,
+      referenceImageDataUrl: body.referenceImageDataUrl || null,
+      resultCount: body.resultCount,
     });
 
-    return NextResponse.json({ ok: true, project: result.project, createdAssetId: result.createdAssetId });
+    return NextResponse.json({ ok: true, project: result.project, createdAssetId: result.createdAssetId, createdAssetIds: result.createdAssetIds });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Studio command failed." }, { status: 400 });
   }
