@@ -21,6 +21,9 @@ export default function NavBarClerkControls() {
   return (
     <>
       <SignedIn>
+        <Link href="/library" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
+          Library
+        </Link>
         <Link href="/app/billing" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
           Billing
         </Link>

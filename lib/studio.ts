@@ -76,6 +76,17 @@ export type StudioProjectDetail = {
   }>;
 };
 
+export type StudioLibraryAsset = {
+  id: string;
+  title: string;
+  sourceUrl: string;
+  prompt: string | null;
+  enhancedPrompt: string | null;
+  projectId: string;
+  projectName: string;
+  createdAt: string;
+};
+
 export async function listStudioProjectsForClerkUser(clerkUserId: string): Promise<StudioProjectSummary[]> {
   let user: { id: string } | null = null;
   try {
@@ -289,6 +300,46 @@ export async function createStudioProjectForClerkUser(input: {
   });
 
   return mapProjectSummary(project);
+}
+
+export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Promise<StudioLibraryAsset[]> {
+  const assets = await prisma.projectAsset.findMany({
+    where: {
+      project: {
+        user: { clerkUserId },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      title: true,
+      sourceUrl: true,
+      prompt: true,
+      enhancedPrompt: true,
+      metadata: true,
+      createdAt: true,
+      project: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  return assets
+    .filter((asset) => readAssetMetadataFlag(asset.metadata, "favorite"))
+    .map((asset) => ({
+      id: asset.id,
+      title: asset.title,
+      sourceUrl: asset.sourceUrl,
+      prompt: asset.prompt,
+      enhancedPrompt: asset.enhancedPrompt,
+      projectId: asset.project.id,
+      projectName: asset.project.name,
+      createdAt: asset.createdAt.toISOString(),
+    }));
 }
 
 export async function updateStudioProjectForClerkUser(input: {
@@ -640,6 +691,7 @@ async function planStudioCommand(input: {
   includeRecentAssets: boolean;
   preferredMode?: "generate" | "edit";
 }): Promise<StudioCommandPlan> {
+  const keepProjectContext = !(input.preferredMode === "generate" && !input.referenceAsset && !input.includeRecentAssets);
   const llmResult = await callLLMResult(
     [
       {
@@ -649,6 +701,9 @@ async function planStudioCommand(input: {
           input.preferredMode
             ? `Treat the user's latest turn as ${input.preferredMode}, not chat.`
             : "Classify the user's latest turn as generate, edit, or chat.",
+          keepProjectContext
+            ? "Use project context only when it materially helps the current request."
+            : "For this request, ignore prior project history and base the output only on the latest user instruction.",
           "Generate a polished production-ready prompt when the mode is generate or edit.",
           "For edit, preserve the core subject and composition unless the instruction explicitly changes them.",
           "Keep the assistantReply concise and practical.",
@@ -658,10 +713,10 @@ async function planStudioCommand(input: {
       {
         role: "user",
         content: JSON.stringify({
-          projectName: input.project.name,
-          brief: input.project.brief,
-          visualDirection: input.project.visualDirection,
-          recentMessages: input.project.messages.slice(0, 6),
+          projectName: keepProjectContext ? input.project.name : null,
+          brief: keepProjectContext ? input.project.brief : null,
+          visualDirection: keepProjectContext ? input.project.visualDirection : null,
+          recentMessages: keepProjectContext ? input.project.messages.slice(0, 6) : [],
           recentAssets: input.includeRecentAssets ? input.project.assets.slice(0, 3) : [],
           referenceAsset: input.referenceAsset,
           latestUserInstruction: input.content,
