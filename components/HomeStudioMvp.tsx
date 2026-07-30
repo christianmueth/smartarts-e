@@ -119,10 +119,6 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   }
 
   async function runCommand(kind: "generate" | "edit" | "variation", content: string, assetId?: string | null, resultCount?: number) {
-    if (!signedIn) {
-      toast.message("Sign in to generate, edit, and save project history.");
-      return;
-    }
     if (!content.trim()) {
       toast.error(kind === "generate" ? "Add a prompt first." : "Add an edit instruction first.");
       return;
@@ -223,19 +219,22 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   Clear
                 </button>
               ) : null}
-              {!signedIn ? (
+              {signedIn ? (
+                <button
+                  type="button"
+                  onClick={() => void runCommand("generate", prompt, null, 4)}
+                  disabled={busyAction !== null || loadingProject}
+                  className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                >
+                  {busyAction === "generate" ? "Generating..." : "Generate"}
+                </button>
+              ) : (
                 <SignInButton mode="modal" forceRedirectUrl="/" signUpForceRedirectUrl="/">
-                  <button className="rounded-full border border-stone-900 px-4 py-2 text-sm text-stone-950 hover:bg-stone-100">Sign in</button>
+                  <button className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800">
+                    Generate
+                  </button>
                 </SignInButton>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void runCommand("generate", prompt, null, 4)}
-                disabled={busyAction !== null || loadingProject}
-                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
-              >
-                {busyAction === "generate" ? "Generating..." : "Generate"}
-              </button>
+              )}
             </div>
             {referenceImageDataUrl ? (
               <img src={referenceImageDataUrl} alt={referenceImageName || "Reference image"} className="h-28 w-28 rounded-2xl border border-stone-200 object-cover" />
