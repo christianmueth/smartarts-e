@@ -185,14 +185,16 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
           </label>
         </div>
         {assets.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {assets.map((asset) => (
               <article key={asset.id} className={asset.id === selectedAssetId
                 ? "overflow-hidden rounded-[1.75rem] border border-pink-400 bg-white/95 shadow-[0_16px_40px_rgba(255,124,185,0.22)]"
                 : "overflow-hidden rounded-[1.75rem] border border-pink-100 bg-white/92 shadow-[0_10px_24px_rgba(255,213,115,0.16)]"
               }>
                 <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="block w-full text-left">
-                  <img src={asset.sourceUrl} alt={asset.title} className="h-64 w-full object-cover" />
+                  <div className="flex aspect-[4/5] w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,236,171,0.85),_rgba(255,246,250,0.96)_58%,_rgba(255,255,255,0.98)_100%)] p-3">
+                    <img src={asset.sourceUrl} alt={asset.title} className="max-h-full w-full rounded-[1.2rem] object-contain shadow-[0_12px_28px_rgba(255,177,209,0.2)]" />
+                  </div>
                 </button>
                 <div className="space-y-2 p-4">
                   <div>
@@ -220,7 +222,9 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
               <h2 className="text-lg font-medium text-[#7a1f4f]">{formatLibraryLabel(selectedAsset.createdAt)}</h2>
               <p className="mt-1 text-sm text-pink-500">{selectedAsset.projectName}</p>
             </div>
-            <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-72 w-full rounded-[1.75rem] border border-pink-200 object-cover shadow-[0_14px_32px_rgba(255,177,209,0.28)]" />
+            <div className="flex max-h-[70vh] min-h-[18rem] items-center justify-center rounded-[1.75rem] border border-pink-200 bg-[radial-gradient(circle_at_top,_rgba(255,236,171,0.85),_rgba(255,246,250,0.96)_58%,_rgba(255,255,255,0.98)_100%)] p-4 shadow-[0_14px_32px_rgba(255,177,209,0.28)]">
+              <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="max-h-[calc(70vh-2rem)] w-full rounded-[1.2rem] object-contain" />
+            </div>
             <div className="flex flex-wrap gap-2">
               <a href={selectedAsset.sourceUrl} download={`${slugify(selectedAsset.title)}.png`} className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-50">
                 Download

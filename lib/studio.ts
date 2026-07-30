@@ -310,7 +310,6 @@ export async function listSavedStudioAssetsForClerkUser(clerkUserId: string): Pr
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 200,
     select: {
       id: true,
       title: true,
