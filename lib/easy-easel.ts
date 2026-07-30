@@ -142,7 +142,6 @@ export async function listEditorAssetsForClerkUser(clerkUserId: string): Promise
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 200,
     select: {
       id: true,
       title: true,

@@ -1017,11 +1017,21 @@ function AssetShelf({ title, assets, onInsert }: { title: string; assets: Editor
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">{title}</p>
-      <div className="mt-2 grid gap-2">
-        {assets.length ? assets.slice(0, 12).map((asset) => (
-          <button key={asset.id} type="button" onClick={() => onInsert(asset)} className="flex items-center gap-3 rounded-[1rem] border border-pink-100 bg-white p-2 text-left hover:border-pink-200">
-            <img src={asset.imageUrl} alt={asset.title} className="h-12 w-12 rounded-xl object-cover" />
-            <span className="min-w-0 flex-1 truncate text-sm text-[#6d2141]">{asset.title}</span>
+      <div className="mt-2 max-h-[24rem] space-y-2 overflow-y-auto pr-1">
+        {assets.length ? assets.map((asset) => (
+          <button
+            key={asset.id}
+            type="button"
+            onClick={() => onInsert(asset)}
+            className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-100 bg-white p-2 text-left hover:border-pink-200"
+          >
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[radial-gradient(circle_at_top,_rgba(255,236,171,0.9),_rgba(255,246,250,0.95)_58%,_rgba(255,255,255,0.98)_100%)] p-1.5">
+              <img src={asset.imageUrl} alt={asset.title} className="max-h-full w-full rounded-lg object-contain" />
+            </div>
+            <span className="min-w-0 flex-1 overflow-hidden text-sm leading-5 text-[#6d2141]">
+              <span className="block truncate font-medium">{asset.title}</span>
+              <span className="block truncate text-xs text-pink-500">Tap to place on canvas</span>
+            </span>
           </button>
         )) : <p className="text-sm text-pink-400">No items yet.</p>}
       </div>
