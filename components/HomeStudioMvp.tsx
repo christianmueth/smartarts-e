@@ -64,7 +64,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   const [referenceImageName, setReferenceImageName] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(initialProject?.assets[0]?.id || null);
   const [editorDraft, setEditorDraft] = useState("");
-  const [busyAction, setBusyAction] = useState<"generate" | "edit" | "variation" | "reset" | `save:${string}` | `delete:${string}` | null>(null);
+  const [busyAction, setBusyAction] = useState<"generate" | "edit" | "variation" | "reset" | "save-batch" | `save:${string}` | `delete:${string}` | null>(null);
   const [loadingProject, setLoadingProject] = useState(false);
   const [currentBatchIds, setCurrentBatchIds] = useState<string[]>([]);
   const [hiddenAssetIds, setHiddenAssetIds] = useState<string[]>([]);
@@ -228,8 +228,8 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
     });
   }
 
-  async function saveToLibrary(assetId: string, shouldSave: boolean) {
-    const toastId = toast.loading(shouldSave ? "Saving to library..." : "Removing from library...");
+  async function saveToLibrary(assetId: string, shouldSave: boolean, options?: { quiet?: boolean }) {
+    const toastId = options?.quiet ? null : toast.loading(shouldSave ? "Saving to library..." : "Removing from library...");
     setBusyAction(`save:${assetId}`);
     try {
       const response = await fetch(`/api/studio/assets/${assetId}`, {
@@ -242,7 +242,43 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
         throw new Error(data?.error || "Library update failed.");
       }
       syncProject(data.project as ProjectDetail);
-      toast.success(shouldSave ? "Saved to library." : "Removed from library.", { id: toastId });
+      if (!options?.quiet) {
+        toast.success(shouldSave ? "Saved to library." : "Removed from library.", { id: toastId || undefined });
+      }
+    } catch (error) {
+      if (!options?.quiet) {
+        toast.error(error instanceof Error ? error.message : "Library update failed.", { id: toastId || undefined });
+      }
+      throw error;
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function saveBatchToLibrary(assetIds: string[]) {
+    const uniqueAssetIds = Array.from(new Set(assetIds)).filter(Boolean);
+    if (!uniqueAssetIds.length) {
+      toast.error("No images to save.");
+      return;
+    }
+
+    const unsavedAssetIds = uniqueAssetIds.filter((assetId) => {
+      const asset = visibleAssets.find((item) => item.id === assetId);
+      return asset && !asset.isFavorite;
+    });
+
+    if (!unsavedAssetIds.length) {
+      toast.message("These images are already in the library.");
+      return;
+    }
+
+    const toastId = toast.loading(`Saving ${unsavedAssetIds.length} ${unsavedAssetIds.length === 1 ? "image" : "images"}...`);
+    setBusyAction("save-batch");
+    try {
+      for (const assetId of unsavedAssetIds) {
+        await saveToLibrary(assetId, true, { quiet: true });
+      }
+      toast.success(`${unsavedAssetIds.length} ${unsavedAssetIds.length === 1 ? "image" : "images"} saved to library.`, { id: toastId });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Library update failed.", { id: toastId });
     } finally {
@@ -415,21 +451,57 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
         <section className="rounded-[2rem] border border-stone-200 bg-white p-4 shadow-sm md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-medium text-stone-950">Results</h2>
-            {loadingProject ? <span className="text-sm text-stone-500">Loading...</span> : null}
+            <div className="flex items-center gap-2">
+              {results.length ? (
+                <button
+                  type="button"
+                  onClick={() => void saveBatchToLibrary(results.map((asset) => asset.id))}
+                  disabled={busyAction !== null}
+                  className="rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                >
+                  {busyAction === "save-batch" ? "Saving..." : "Save all"}
+                </button>
+              ) : null}
+              {loadingProject ? <span className="text-sm text-stone-500">Loading...</span> : null}
+            </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {results.length ? results.map((asset) => (
-              <button
+              <article
                 key={asset.id}
-                type="button"
-                onClick={() => setSelectedAssetId(asset.id)}
                 className={asset.id === selectedAssetId
-                  ? "overflow-hidden rounded-[1.5rem] border border-stone-950 bg-white text-left"
-                  : "overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white text-left"
+                  ? "overflow-hidden rounded-[1.5rem] border border-stone-950 bg-white"
+                  : "overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white"
                 }
               >
-                <img src={asset.sourceUrl} alt={asset.title} className="h-64 w-full object-cover" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssetId(asset.id)}
+                  className="block w-full text-left"
+                >
+                  <img src={asset.sourceUrl} alt={asset.title} className="h-64 w-full object-cover" />
+                </button>
+                <div className="flex items-center justify-between gap-2 px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAssetId(asset.id)}
+                    className="text-sm text-stone-700 hover:text-stone-950"
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveToLibrary(asset.id, !asset.isFavorite)}
+                    disabled={busyAction === `save:${asset.id}`}
+                    className={asset.isFavorite
+                      ? "rounded-full bg-stone-950 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+                      : "rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                    }
+                  >
+                    {busyAction === `save:${asset.id}` ? "Saving..." : asset.isFavorite ? "Saved" : "Save"}
+                  </button>
+                </div>
+              </article>
             )) : (
               <div className="md:col-span-2 xl:col-span-4 rounded-[1.5rem] border border-dashed border-stone-300 bg-stone-50 px-6 py-12 text-center text-sm text-stone-500">
                 Generate to see results.
