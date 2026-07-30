@@ -67,6 +67,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   const [busyAction, setBusyAction] = useState<"generate" | "edit" | "variation" | "reset" | `save:${string}` | `delete:${string}` | null>(null);
   const [loadingProject, setLoadingProject] = useState(false);
   const [currentBatchIds, setCurrentBatchIds] = useState<string[]>([]);
+  const [hiddenAssetIds, setHiddenAssetIds] = useState<string[]>([]);
 
   useEffect(() => {
     setSelectedAssetId((current) => current && activeProject?.assets.some((asset) => asset.id === current)
@@ -91,14 +92,18 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       .finally(() => setLoadingProject(false));
   }, [signedIn, activeProjectId, activeProject?.id]);
 
-  const selectedAsset = activeProject?.assets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const visibleAssets = useMemo(
+    () => activeProject?.assets.filter((asset) => !hiddenAssetIds.includes(asset.id)) ?? [],
+    [activeProject, hiddenAssetIds]
+  );
+  const selectedAsset = visibleAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const results = useMemo(() => {
-    if (!activeProject?.assets.length) return [] as ProjectDetail["assets"];
+    if (!visibleAssets.length) return [] as ProjectDetail["assets"];
     const latestBatch = currentBatchIds
-      .map((id) => activeProject.assets.find((asset) => asset.id === id) || null)
+      .map((id) => visibleAssets.find((asset) => asset.id === id) || null)
       .filter((asset): asset is ProjectDetail["assets"][number] => Boolean(asset));
-    return latestBatch.length ? latestBatch : activeProject.assets.slice(0, 4);
-  }, [activeProject, currentBatchIds]);
+    return latestBatch.length ? latestBatch : visibleAssets.slice(0, 4);
+  }, [visibleAssets, currentBatchIds]);
 
   function getActionLabels(kind: "generate" | "edit" | "variation") {
     if (kind === "edit") {
@@ -165,6 +170,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
 
       const project = data.project as ProjectDetail;
       const batchIds = Array.isArray(data?.createdAssetIds) ? data.createdAssetIds.filter((value: unknown) => typeof value === "string") : [];
+      setHiddenAssetIds([]);
       setActiveProject(project);
       setActiveProjectId(project.id);
       setProjects((current) => {
@@ -203,6 +209,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
 
   function syncProject(project: ProjectDetail | null) {
     setActiveProject(project);
+    setHiddenAssetIds((current) => current.filter((id) => project?.assets.some((asset) => asset.id === id)));
     if (!project) return;
     setActiveProjectId(project.id);
     setProjects((current) => {
@@ -245,6 +252,15 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   async function deleteAsset(assetId: string) {
     const toastId = toast.loading("Deleting image...");
     setBusyAction(`delete:${assetId}`);
+    const nextVisibleAssets = visibleAssets.filter((asset) => asset.id !== assetId);
+    setHiddenAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
+    setCurrentBatchIds((current) => current.filter((id) => id !== assetId));
+    setSelectedAssetId(nextVisibleAssets[0]?.id || null);
+    setActiveProject((current) => current ? {
+      ...current,
+      assets: current.assets.filter((asset) => asset.id !== assetId),
+      assetCount: Math.max(0, current.assetCount - 1),
+    } : current);
     try {
       const response = await fetch(`/api/studio/assets/${assetId}`, {
         method: "DELETE",
@@ -255,10 +271,27 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       }
       const nextProject = (data?.project || null) as ProjectDetail | null;
       syncProject(nextProject);
-      setCurrentBatchIds((current) => current.filter((id) => id !== assetId));
       setSelectedAssetId(nextProject?.assets[0]?.id || null);
       toast.success("Image deleted.", { id: toastId });
     } catch (error) {
+      setHiddenAssetIds((current) => current.filter((id) => id !== assetId));
+      if (activeProjectId) {
+        setLoadingProject(true);
+        void fetch(`/api/studio/projects/${activeProjectId}`, { cache: "no-store" })
+          .then(async (reloadResponse) => {
+            const reloadData = await reloadResponse.json().catch(() => null);
+            if (!reloadResponse.ok || !reloadData?.ok || !reloadData?.project) {
+              throw new Error(reloadData?.error || "Project loading failed.");
+            }
+            const project = reloadData.project as ProjectDetail;
+            syncProject(project);
+            setSelectedAssetId(project.assets[0]?.id || null);
+          })
+          .catch(() => {
+            // Keep the original toast error below as the user-facing signal.
+          })
+          .finally(() => setLoadingProject(false));
+      }
       toast.error(error instanceof Error ? error.message : "Image deletion failed.", { id: toastId });
     } finally {
       setBusyAction(null);
@@ -409,34 +442,41 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
             <div className="grid gap-5 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
               <div className="space-y-3">
                 <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-56 w-full rounded-[1.5rem] border border-stone-200 object-cover" />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isFavorite)}
-                    disabled={busyAction === `save:${selectedAsset.id}`}
-                    className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
-                  >
-                    {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isFavorite ? "Saved" : "Save to library"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void runCommand("variation", "Create four variations of this image. Keep the core subject and composition while exploring new treatments.", selectedAsset.id, 4)}
-                    disabled={busyAction !== null}
-                    className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
-                  >
-                    {busyAction === "variation" ? "Varying..." : "Variations"}
-                  </button>
-                  <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
-                    Download
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteAsset(selectedAsset.id)}
-                    disabled={busyAction === `delete:${selectedAsset.id}`}
-                    className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
-                  >
-                    {busyAction === `delete:${selectedAsset.id}` ? "Deleting..." : "Delete"}
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isFavorite)}
+                      disabled={busyAction === `save:${selectedAsset.id}`}
+                      className={selectedAsset.isFavorite
+                        ? "rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                        : "rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                      }
+                    >
+                      {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isFavorite ? "Saved to library" : "Save to library"}
+                    </button>
+                    <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
+                      Download
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void runCommand("variation", "Create four variations of this image. Keep the core subject and composition while exploring new treatments.", selectedAsset.id, 4)}
+                      disabled={busyAction !== null}
+                      className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                    >
+                      {busyAction === "variation" ? "Varying..." : "Create variations"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteAsset(selectedAsset.id)}
+                      disabled={busyAction === `delete:${selectedAsset.id}`}
+                      className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
+                    >
+                      {busyAction === `delete:${selectedAsset.id}` ? "Deleting..." : "Delete image"}
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-3">
