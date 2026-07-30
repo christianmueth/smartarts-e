@@ -142,7 +142,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
                 </button>
                 <div className="space-y-2 p-4">
                   <div>
-                    <h2 className="text-sm font-medium text-stone-950">{asset.title}</h2>
+                    <h2 className="text-sm font-medium text-stone-950">{formatLibraryLabel(asset.createdAt)}</h2>
                     <p className="mt-1 text-xs text-stone-500">{asset.projectName}</p>
                   </div>
                   <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="inline-flex rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50">
@@ -163,7 +163,7 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
         {selectedAsset ? (
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-medium text-stone-950">{selectedAsset.title}</h2>
+              <h2 className="text-lg font-medium text-stone-950">{formatLibraryLabel(selectedAsset.createdAt)}</h2>
               <p className="mt-1 text-sm text-stone-500">{selectedAsset.projectName}</p>
             </div>
             <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-72 w-full rounded-[1.5rem] border border-stone-200 object-cover" />
@@ -206,6 +206,20 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
       </aside>
     </div>
   );
+}
+
+function formatLibraryLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Saved image";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function slugify(value: string) {
