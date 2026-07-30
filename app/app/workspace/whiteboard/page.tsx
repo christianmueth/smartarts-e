@@ -8,7 +8,7 @@ const whiteboardCapabilities = [
   "Freehand sketching and annotations for ideas you are still forming.",
   "Diagram and concept-map space for relationships, systems, and processes.",
   "PDF and image overlays so explanations can happen directly on source material.",
-  "AI assist actions like clean this sketch, visualize this explanation, or turn this into a flowchart.",
+  "AI assist actions like clean this sketch, visualize a composition, turn an art brief into a flowchart, or generate a premium image reference directly onto the board.",
 ];
 
 const whiteboardRules = [
@@ -26,14 +26,14 @@ export default function WorkspaceWhiteboardPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Workspace Section</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Whiteboard + visual planning should live in its own workspace, not inside flashcards.</h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-700">
-          This section is the visual reasoning surface for Phase 2. It should support diagrams, annotations, overlays, and concept mapping while keeping authorship and control with the learner.
+          This section is the visual reasoning surface for concept development, composition planning, moodboard framing, and annotated source review. It should support diagrams, overlays, and AI-guided visual ideation while keeping authorship and control with the human art director.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
             href="/app/workspace?workspaceMode=instructional-chat&starterPrompt=Help%20me%20plan%20a%20whiteboard%20for%20this%20topic%20with%20the%20best%20visual%20structure%2C%20labels%2C%20and%20explanation%20sequence.&reason=Whiteboard%20planning%20should%20start%20from%20instructional%20chat%20inside%20the%20workspace."
             className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Plan a whiteboard with Mate-E
+            Plan a whiteboard with SmartArts
           </Link>
           <Link href="/app/workspace" className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-white">
             Back to workspace hub

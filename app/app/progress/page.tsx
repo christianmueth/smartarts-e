@@ -133,7 +133,7 @@ export default async function ProgressPage() {
   }
 
   if (!userRecord) {
-    return <StateMessage title="Your progress view is temporarily unavailable." body="Mate-E couldn't load your recent progress signals right now. Try again in a moment." tone="error" />;
+    return <StateMessage title="Your progress view is temporarily unavailable." body="SmartArts couldn't load your recent progress signals right now. Try again in a moment." tone="error" />;
   }
 
   if (!userRecord) {
@@ -242,7 +242,7 @@ export default async function ProgressPage() {
       <section className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-gradient-to-r from-sky-50 via-white to-emerald-50 p-8 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl space-y-3">
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-sky-700">Workspace progress read</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl">How Mate-E reads your current momentum</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl">How SmartArts reads your current momentum</h1>
           <p className="text-base leading-7 text-gray-600">
             This space should feel like a readable interpretation of your last few work blocks, not a dashboard reporting numbers. The goal is to show what is settling, what still needs reinforcement, and where the next focused pass should begin.
           </p>
@@ -713,13 +713,13 @@ function buildTutorBrief(
     ? `Let's reinforce ${titleCase(weakConcept)} before you move on.`
     : recentWin
       ? "You are building real recovery momentum."
-      : "Mate-E is watching for the next concept to stabilize.";
+      : "SmartArts is watching for the next concept to stabilize.";
 
   const body = recoverySummary
     ? `${recoverySummary} ${weakConcept ? `Right now the biggest leverage point is ${titleCase(weakConcept)}, because it is still showing up in your recent learning memory.` : "The next step is to keep your work blocks short, targeted, and consistent so the system can refine what works best for you."}`
     : weakConcept
       ? `You have recent signals around ${titleCase(weakConcept)}, so the best session today is a short targeted review with quick checks rather than broad deck browsing.`
-      : "Mate-E does not yet have enough recovery evidence to make a strong intervention call, so the next best move is another focused work block with answer-first coaching.";
+      : "SmartArts does not yet have enough recovery evidence to make a strong intervention call, so the next best move is another focused work block with answer-first coaching.";
 
   const cues = [
     workspaceContext?.whiteboardReference?.boardName
@@ -734,10 +734,10 @@ function buildTutorBrief(
       ? `You are on a ${lowConfidenceStreak}-session low-confidence streak, so slower step-by-step support is likely to help.`
       : "Confidence has not shown a prolonged dip recently, so you can keep pushing with normal pacing.",
     preferredStyle
-      ? `Mate-E is currently leaning toward ${preferredStyle.toLowerCase()} explanations because that style has matched your recent behavior best.`
+      ? `SmartArts is currently leaning toward ${preferredStyle.toLowerCase()} explanations because that style has matched your recent behavior best.`
       : recentWin
         ? `Recent recovery win: ${trimText(recentWin, 92)}`
-        : "As you complete more guided sessions, Mate-E will personalize explanation style more aggressively.",
+        : "As you complete more guided sessions, SmartArts will personalize explanation style more aggressively.",
   ];
 
   return { headline, body, cues };
@@ -758,20 +758,20 @@ function buildProgressNarrative(
   const topicLabel = weakConcept ? titleCase(weakConcept) : nextTopic?.title || "your next guided review topic";
 
   return {
-    headline: weakConcept ? `${topicLabel} is still the concept to reinforce first.` : "Mate-E can now point to one clear next reinforcement target.",
+    headline: weakConcept ? `${topicLabel} is still the concept to reinforce first.` : "SmartArts can now point to one clear next reinforcement target.",
     summary: recoverySummary
       ? `${recoverySummary} The progress page should keep that thread intact by showing how the recent sessions connect, not just what they measured.`
       : nextTopic?.reason || "Your recent workspace history is starting to form a clearer learning narrative, so the next step should reinforce one concept rather than scatter attention across the whole library.",
     whatChanged: recentSuccess
-      ? `A recent win suggests part of the material is becoming easier to retrieve, which means Mate-E can now build on momentum instead of only reacting to struggle. ${trimText(recentSuccess, 120)}`
+      ? `A recent win suggests part of the material is becoming easier to retrieve, which means SmartArts can now build on momentum instead of only reacting to struggle. ${trimText(recentSuccess, 120)}`
       : `The strongest change is structural: there is now enough history to stop giving generic next steps and start anchoring guidance around ${topicLabel}.`,
     stillUnstable: recentFailure
-      ? `${trimText(recentFailure, 132)} still needs reinforcement, so Mate-E should treat it as active learning work rather than a finished topic.`
+      ? `${trimText(recentFailure, 132)} still needs reinforcement, so SmartArts should treat it as active learning work rather than a finished topic.`
       : misconception
         ? `${humanizeMisconceptionCategory(misconception)} remains the clearest instability pattern in the recent history, so worked examples and slower explanations are still the right posture here.`
         : lowConfidenceStreak > 0
           ? `There is still a low-confidence stretch in the recent pattern, so pacing should stay calm and targeted until that stops repeating.`
-          : `${topicLabel} looks improved, but Mate-E should still treat it as recently recovering rather than fully stable.`,
+          : `${topicLabel} looks improved, but SmartArts should still treat it as recently recovering rather than fully stable.`,
     nextStep: weakConcept
       ? `Start the next guided pass with ${topicLabel}, and if the explanation begins to slow down again, use coaching early instead of waiting until the end of the session.`
       : nextTopic

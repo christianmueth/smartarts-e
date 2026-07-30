@@ -1,5 +1,5 @@
-export const TUTOR_CHAT_SESSION_CONTEXT_STORAGE_KEY = "mate-e:tutor-chat-session-context";
-export const TUTOR_CHAT_SESSION_CONTEXT_EVENT = "mate-e:tutor-chat-session-context";
+export const TUTOR_CHAT_SESSION_CONTEXT_STORAGE_KEY = "smartarts-e:tutor-chat-session-context";
+export const TUTOR_CHAT_SESSION_CONTEXT_EVENT = "smartarts-e:tutor-chat-session-context";
 export const LEGACY_TUTOR_CHAT_SESSION_CONTEXT_STORAGE_KEY = "quickstud:tutor-chat-session-context";
 export const LEGACY_TUTOR_CHAT_SESSION_CONTEXT_EVENT = "quickstud:tutor-chat-session-context";
 

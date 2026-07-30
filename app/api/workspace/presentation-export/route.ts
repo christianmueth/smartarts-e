@@ -28,8 +28,8 @@ export async function POST(req: Request) {
 
     const pptx = new PptxGenJS();
     pptx.layout = "LAYOUT_WIDE";
-  pptx.author = "Mate-E";
-  pptx.company = "Mate-E";
+    pptx.author = "SmartArts";
+    pptx.company = "SmartArts";
     pptx.subject = plan.objective || "Workspace presentation";
     pptx.title = plan.title || "Workspace presentation";
     pptx.lang = "en-US";

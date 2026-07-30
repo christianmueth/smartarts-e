@@ -39,7 +39,7 @@ type TutorChatResponse = {
   error?: string;
 };
 
-const OPEN_STORAGE_KEY = "mate-e:tutor-chat-open";
+const OPEN_STORAGE_KEY = "smartarts-e:tutor-chat-open";
 const LEGACY_OPEN_STORAGE_KEY = "quickstud:tutor-chat-open";
 
 export default function TutorChatPanel() {

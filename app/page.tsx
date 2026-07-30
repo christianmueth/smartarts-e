@@ -1,3 +1,7 @@
+import Image from "next/image";
+import Link from "next/link";
+import HomeClerkAuthControls from "@/components/HomeClerkAuthControls";
+
 const pipelineStages = [
   {
     title: "Concept framing",
@@ -34,6 +38,16 @@ export default function Home() {
       <section className="mx-auto flex max-w-7xl flex-col gap-10 px-4 pb-12 pt-10 md:px-6 md:pb-20 md:pt-16">
         <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr] lg:items-end">
           <div className="space-y-6">
+            <div className="inline-flex rounded-[2rem] border border-white/70 bg-white/80 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur">
+              <Image
+                src="/smartarts-e_logo.png"
+                alt="SmartArts logo"
+                width={960}
+                height={960}
+                priority
+                className="h-auto w-full max-w-[16rem] sm:max-w-[18rem]"
+              />
+            </div>
             <p className="inline-flex rounded-full border border-orange-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700 shadow-sm">
               SmartArts AI Production Studio
             </p>
@@ -51,8 +65,17 @@ export default function Home() {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-stone-500">Production focus</p>
             <div className="mt-5 space-y-4 text-sm leading-7 text-stone-700">
               <p>From first prompt architecture to final review boards, every visible surface now points toward visual production work.</p>
-              <p>Unrelated tutoring, study, and label-review flows are no longer part of the site experience.</p>
+              <p>The public experience stays focused on visual development, campaign systems, and delivery-ready creative production.</p>
             </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <HomeClerkAuthControls nextTarget="/app/studio" />
+              <Link href="/app/billing" className="rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-900 hover:bg-stone-50">
+                View premium billing
+              </Link>
+            </div>
+            <p className="mt-4 text-xs leading-6 text-stone-500">
+              Premium currently unlocks whiteboard image generation for mood boards, concept frames, and fast visual reference building.
+            </p>
           </div>
         </div>
 

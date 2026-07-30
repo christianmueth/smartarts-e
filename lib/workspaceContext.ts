@@ -1,7 +1,7 @@
 import type { TutorChatSessionContext } from "@/lib/tutorChatSessionContext";
 
-export const WORKSPACE_CONTEXT_STORAGE_KEY = "mate-e:workspace-context";
-export const WORKSPACE_CONTEXT_EVENT = "mate-e:workspace-context";
+export const WORKSPACE_CONTEXT_STORAGE_KEY = "smartarts-e:workspace-context";
+export const WORKSPACE_CONTEXT_EVENT = "smartarts-e:workspace-context";
 const LEGACY_WORKSPACE_CONTEXT_STORAGE_KEY = "quickstud:workspace-context";
 const LEGACY_WORKSPACE_CONTEXT_EVENT = "quickstud:workspace-context";
 

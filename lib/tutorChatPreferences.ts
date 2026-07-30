@@ -1,5 +1,5 @@
-export const TUTOR_CHAT_ENABLED_STORAGE_KEY = "mate-e:tutor-chat-enabled";
-export const TUTOR_CHAT_ENABLED_EVENT = "mate-e:tutor-chat-enabled";
+export const TUTOR_CHAT_ENABLED_STORAGE_KEY = "smartarts-e:tutor-chat-enabled";
+export const TUTOR_CHAT_ENABLED_EVENT = "smartarts-e:tutor-chat-enabled";
 const LEGACY_TUTOR_CHAT_ENABLED_STORAGE_KEY = "quickstud:tutor-chat-enabled";
 const LEGACY_TUTOR_CHAT_ENABLED_EVENT = "quickstud:tutor-chat-enabled";
 

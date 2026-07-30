@@ -16,7 +16,7 @@ const instructionalChatLaunchers = [
   },
   {
     title: "Build From Notes Or Sources",
-    description: "Ask Mate-E to help structure notes, workspace sets, and upcoming explanations before whiteboard and presentation tools arrive.",
+    description: "Ask SmartArts to help structure notes, workspace sets, and upcoming explanations before whiteboard and presentation tools arrive.",
     href: "/app/workspace?workspaceMode=instructional-chat&starterPrompt=Help%20me%20turn%20my%20current%20source%20material%20into%20a%20clear%20workspace%20plan%20with%20key%20ideas%2C%20questions%2C%20and%20next%20steps.&reason=Instructional%20chat%20should%20unify%20notes%2C%20workspace%20sets%2C%20and%20future%20workspace%20tools.",
   },
 ];
@@ -48,7 +48,7 @@ export default function WorkspacePage() {
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Phase 2 Workspace Expansion</p>
         <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight text-slate-950">A guided productivity workspace starts with instructional chat.</h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-700">
-          The chat layer should unify planning, focused work, memory, whiteboard work, and later presentation building. Mate-E assists the workspace, but it does not operate the workspace for you.
+          The chat layer should unify planning, focused work, memory, whiteboard work, and later presentation building. SmartArts assists the workspace, but it does not operate the workspace for you.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href={instructionalChatLaunchers[0].href} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">

@@ -10,6 +10,11 @@ datasource db {
 model User {
   id            String         @id @default(cuid())
   clerkUserId   String         @unique
+  premiumStatus String?
+  premiumAccessUntil DateTime?
+  stripeCustomerId String?     @unique
+  stripeSubscriptionId String? @unique
+  stripePriceId String?
   dailyGoal     Int            @default(50)
   lastStudyDate DateTime?
   studyStreak   Int            @default(0)
@@ -17,6 +22,7 @@ model User {
   xpToday       Int            @default(0)
   xpTodayDate   DateTime?
   decks         Deck[]
+  projects      Project[]
   reasoningRuns ReasoningRun[]
   studentState  StudentState?
 }
@@ -115,4 +121,58 @@ model StudentState {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id              String           @id @default(cuid())
+  userId          String
+  name            String
+  brief           String?
+  visualDirection String?
+  status          String           @default("active")
+  searchText      String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  lastActivityAt  DateTime         @default(now())
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets          ProjectAsset[]
+  messages        ProjectMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([userId, lastActivityAt])
+}
+
+model ProjectMessage {
+  id          String   @id @default(cuid())
+  projectId   String
+  role        String
+  content     String
+  commandType String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model ProjectAsset {
+  id             String   @id @default(cuid())
+  projectId      String
+  kind           String
+  title          String
+  sourceUrl      String
+  prompt         String?
+  enhancedPrompt String?
+  mimeType       String?
+  width          Int?
+  height         Int?
+  tags           String[]
+  searchText     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, kind, createdAt])
 }

@@ -190,7 +190,7 @@ type WhiteboardStateResponse = {
 
 const CANVAS_WIDTH = 2400;
 const CANVAS_HEIGHT = 1600;
-const WHITEBOARD_STORAGE_KEY = "mate-e:workspace-whiteboard-v4";
+const WHITEBOARD_STORAGE_KEY = "smartarts-e:workspace-whiteboard-v4";
 const LEGACY_WHITEBOARD_STORAGE_KEY = "quickstud:workspace-whiteboard-v4";
 const DEFAULT_NOTE_COLOR = "#FEF3C7";
 const COLOR_SWATCHES = ["#0f172a", "#0284c7", "#0f766e", "#7c3aed", "#dc2626", "#d97706"];
@@ -1508,7 +1508,7 @@ export default function WorkspaceWhiteboard() {
         });
         const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
         const svgUrl = URL.createObjectURL(svgBlob);
-        triggerDownload(svgUrl, "mate-e-workspace-board.svg");
+        triggerDownload(svgUrl, "smartarts-e-workspace-board.svg");
         window.setTimeout(() => URL.revokeObjectURL(svgUrl), 0);
         return;
       }
@@ -1524,7 +1524,7 @@ export default function WorkspaceWhiteboard() {
         quality: format === "jpeg" || format === "webp" ? 0.92 : undefined,
       });
 
-      triggerDownload(snapshotUrl, `mate-e-workspace-board.${format === "jpeg" ? "jpg" : format}`);
+      triggerDownload(snapshotUrl, `smartarts-e-workspace-board.${format === "jpeg" ? "jpg" : format}`);
     } catch {
       toast.error("We couldn't export the board right now.");
     } finally {
@@ -2544,7 +2544,7 @@ export default function WorkspaceWhiteboard() {
                         Place note
                       </button>
                       <button type="button" onClick={() => void generateBoardImageFromPrompt()} disabled={imagePromptLoading} className="rounded-full border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-sm font-medium text-cyan-950 hover:bg-cyan-100 disabled:opacity-60">
-                        {imagePromptLoading ? "Generating image..." : "Ask AI for image"}
+                        {imagePromptLoading ? "Generating image..." : "Generate premium image"}
                       </button>
                       <button type="button" onClick={addAnnotation} className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-50">
                         Save annotation
@@ -2555,6 +2555,9 @@ export default function WorkspaceWhiteboard() {
                         </button>
                       ) : null}
                     </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
+                      Premium billing unlocks whiteboard image generation. Use it for moodboard fragments, composition studies, and quick visual references.
+                    </p>
                   </div>
 
                   {assistSuggestion ? (
@@ -2580,7 +2583,7 @@ export default function WorkspaceWhiteboard() {
                       <div className="mt-3 space-y-2">
                         {recentActivity.map((item) => (
                           <div key={`${item.createdAt}-${item.content}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{item.role === "assistant" ? "Mate-E" : "You"} • {formatSavedAt(item.createdAt)}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{item.role === "assistant" ? "SmartArts" : "You"} • {formatSavedAt(item.createdAt)}</p>
                             <p className="mt-1">{truncateText(item.content, 140)}</p>
                           </div>
                         ))}

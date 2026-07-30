@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "How Adaptive Guidance Works | Mate-E",
+  title: "How Adaptive Guidance Works | SmartArts",
   description:
-    "Learn how Mate-E personalizes tutoring with bounded guidance, interpretable recommendations, and calm study flow.",
+    "Learn how SmartArts personalizes guidance with bounded recommendations and calm creative workflow support.",
 };
 
 const guidancePrinciples = [
   {
     title: "Guidance stays bounded",
-    body: "Mate-E can suggest what to review next and how to explain it, but it does not quietly take control of your learning plan.",
+    body: "SmartArts can suggest what to review next and how to explain it, but it does not quietly take control of your workflow.",
   },
   {
     title: "Recommendations stay interpretable",
@@ -43,7 +43,7 @@ export default function AdaptiveGuidancePage() {
       <section className="rounded-[2rem] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-8 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Resources</p>
         <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-slate-950">
-          How adaptive guidance works in Mate-E
+          How adaptive guidance works in SmartArts
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-700">
           The tutor uses your recent answers, recovery pattern, and study history to decide what kind of help is most useful next.

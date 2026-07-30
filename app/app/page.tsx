@@ -266,13 +266,13 @@ function buildWorkspaceTutorBrief(
     ? `Start with ${titleCase(weakConcept)} before browsing everything else.`
     : deckCount > 0
       ? "Your workspace is ready for a focused pass."
-      : "Create your first workspace set and Mate-E will start building continuity.";
+      : "Create your first workspace set and SmartArts will start building continuity.";
 
   const summary = weakConcept
-    ? `Mate-E is prioritizing ${titleCase(weakConcept)} because it still appears in your recent workspace memory${misconception ? ` and is often paired with ${humanizeMisconceptionCategory(misconception).toLowerCase()}` : ""}. A short focused work block will help more than jumping across multiple sets.`
+    ? `SmartArts is prioritizing ${titleCase(weakConcept)} because it still appears in your recent workspace memory${misconception ? ` and is often paired with ${humanizeMisconceptionCategory(misconception).toLowerCase()}` : ""}. A short focused work block will help more than jumping across multiple sets.`
     : deckCount > 0
       ? "You have enough material to start a structured work block. As you complete more guided reviews, the workspace will get more specific about what to reinforce next and why."
-      : "Once you add material and complete a few guided checks, Mate-E will start surfacing weak concepts, recovery patterns, and practical next steps here.";
+      : "Once you add material and complete a few guided checks, SmartArts will start surfacing weak concepts, recovery patterns, and practical next steps here.";
 
   const cues = [
     recentFailure
@@ -280,7 +280,7 @@ function buildWorkspaceTutorBrief(
       : "No recent failure is dominating the workspace yet.",
     recentSuccess
       ? `Recent recovery win: ${trimText(recentSuccess, 88)}`
-      : "Mate-E is still waiting for enough recovery evidence to highlight a recent win.",
+      : "SmartArts is still waiting for enough recovery evidence to highlight a recent win.",
     lowConfidenceStreak > 0
       ? `You are on a ${lowConfidenceStreak}-session low-confidence streak, so a slower example-first work block is a good default.`
       : "Confidence has not shown a prolonged drop recently, so normal pacing is still appropriate.",
@@ -302,14 +302,14 @@ function buildTutorMemoryMoments(
     moments.push(`You recovered this more smoothly in a recent session: ${trimText(studentState.recentSuccesses[0], 92)}`);
   }
   if (studentState?.preferredExplanationStyle) {
-    moments.push(`Mate-E currently sees ${studentState.preferredExplanationStyle.toLowerCase()} explanations as your best fit.`);
+    moments.push(`SmartArts currently sees ${studentState.preferredExplanationStyle.toLowerCase()} explanations as your best fit.`);
   }
   if (analytics?.dominantMisconception) {
     moments.push(`Most repeated recent friction point: ${humanizeMisconceptionCategory(analytics.dominantMisconception)}.`);
   }
 
   if (moments.length === 0) {
-    moments.push("As you use the workspace more, Mate-E will start recalling hesitation patterns, stronger explanation styles, and faster recovery paths here.");
+    moments.push("As you use the workspace more, SmartArts will start recalling hesitation patterns, stronger explanation styles, and faster recovery paths here.");
   }
 
   return moments.slice(0, 4);
