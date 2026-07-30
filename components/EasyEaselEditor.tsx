@@ -628,7 +628,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
   const groupedAssets = useMemo(() => ({
     upload: assets.filter((asset) => asset.type === "upload"),
-    generated: assets.filter((asset) => asset.type === "generated"),
+    generated: assets.filter((asset) => asset.type === "generated" && asset.isSaved),
     edited: assets.filter((asset) => asset.type === "edited"),
   }), [assets]);
 

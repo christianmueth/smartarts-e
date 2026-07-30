@@ -421,6 +421,7 @@ function mapEditorAsset(asset: {
     title: asset.title,
     imageUrl: asset.sourceUrl,
     type,
+    isSaved: metadata.saved === true,
     sourceAssetId: typeof metadata.sourceAssetId === "string" ? metadata.sourceAssetId : null,
     prompt: asset.prompt,
     width: asset.width,

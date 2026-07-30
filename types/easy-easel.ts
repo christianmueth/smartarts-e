@@ -71,6 +71,7 @@ export type EditorAsset = {
   title: string;
   imageUrl: string;
   type: EditorAssetType;
+  isSaved: boolean;
   sourceAssetId: string | null;
   prompt: string | null;
   width: number | null;
