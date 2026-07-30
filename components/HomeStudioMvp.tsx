@@ -100,6 +100,25 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
     return latestBatch.length ? latestBatch : activeProject.assets.slice(0, 4);
   }, [activeProject, currentBatchIds]);
 
+  function getActionLabels(kind: "generate" | "edit" | "variation") {
+    if (kind === "edit") {
+      return {
+        loading: "Applying your edit. This can take a little while.",
+        success: "Edit complete.",
+      };
+    }
+    if (kind === "variation") {
+      return {
+        loading: "Creating variations. This can take a little while.",
+        success: "Variations ready.",
+      };
+    }
+    return {
+      loading: "Generating images. This can take a little while.",
+      success: "Images ready.",
+    };
+  }
+
   async function ensureProject() {
     if (activeProjectId) return activeProjectId;
     const projectName = prompt.trim().split(/[.!?\n]/)[0].slice(0, 80) || "Untitled project";
@@ -124,6 +143,8 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       return;
     }
 
+    const actionLabels = getActionLabels(kind);
+    const toastId = toast.loading(actionLabels.loading);
     setBusyAction(kind);
     try {
       const projectId = await ensureProject();
@@ -167,8 +188,14 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       if (kind === "edit") {
         setEditorDraft("");
       }
+      toast.success(
+        batchIds.length
+          ? `${actionLabels.success} ${batchIds.length} ${batchIds.length === 1 ? "image" : "images"} added.`
+          : actionLabels.success,
+        { id: toastId }
+      );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Image generation failed.");
+      toast.error(error instanceof Error ? error.message : "Image generation failed.", { id: toastId });
     } finally {
       setBusyAction(null);
     }
