@@ -134,18 +134,18 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {assets.map((asset) => (
               <article key={asset.id} className={asset.id === selectedAssetId
-                ? "overflow-hidden rounded-[1.5rem] border border-stone-950 bg-white shadow-sm"
-                : "overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-sm"
+                ? "overflow-hidden rounded-[1.75rem] border border-pink-400 bg-white/95 shadow-[0_16px_40px_rgba(255,124,185,0.22)]"
+                : "overflow-hidden rounded-[1.75rem] border border-pink-100 bg-white/92 shadow-[0_10px_24px_rgba(255,213,115,0.16)]"
               }>
                 <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="block w-full text-left">
                   <img src={asset.sourceUrl} alt={asset.title} className="h-64 w-full object-cover" />
                 </button>
                 <div className="space-y-2 p-4">
                   <div>
-                    <h2 className="text-sm font-medium text-stone-950">{formatLibraryLabel(asset.createdAt)}</h2>
-                    <p className="mt-1 text-xs text-stone-500">{asset.projectName}</p>
+                    <h2 className="text-sm font-medium text-[#7a1f4f]">{formatLibraryLabel(asset.createdAt)}</h2>
+                    <p className="mt-1 text-xs text-pink-500">{asset.projectName}</p>
                   </div>
-                  <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="inline-flex rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50">
+                  <button type="button" onClick={() => setSelectedAssetId(asset.id)} className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900 hover:bg-yellow-100">
                     Open
                   </button>
                 </div>
@@ -153,53 +153,53 @@ export default function LibraryWorkspace({ initialAssets }: Props) {
             ))}
           </div>
         ) : (
-          <div className="rounded-[1.5rem] border border-dashed border-stone-300 bg-white px-6 py-14 text-center text-sm text-stone-500">
+          <div className="rounded-[1.75rem] border border-dashed border-pink-200 bg-[linear-gradient(180deg,_rgba(255,241,247,0.95),_rgba(255,249,212,0.9))] px-6 py-14 text-center text-sm text-pink-500">
             Save images from the homepage to build your library.
           </div>
         )}
       </div>
 
-      <aside className="rounded-[1.5rem] border border-stone-200 bg-white p-5 shadow-sm">
+      <aside className="rounded-[1.75rem] border border-pink-200/80 bg-white/84 p-5 shadow-[0_18px_60px_rgba(255,129,181,0.16)] backdrop-blur">
         {selectedAsset ? (
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-medium text-stone-950">{formatLibraryLabel(selectedAsset.createdAt)}</h2>
-              <p className="mt-1 text-sm text-stone-500">{selectedAsset.projectName}</p>
+              <h2 className="text-lg font-medium text-[#7a1f4f]">{formatLibraryLabel(selectedAsset.createdAt)}</h2>
+              <p className="mt-1 text-sm text-pink-500">{selectedAsset.projectName}</p>
             </div>
-            <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-72 w-full rounded-[1.5rem] border border-stone-200 object-cover" />
+            <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-72 w-full rounded-[1.75rem] border border-pink-200 object-cover shadow-[0_14px_32px_rgba(255,177,209,0.28)]" />
             <div className="flex flex-wrap gap-2">
-              <a href={selectedAsset.sourceUrl} download={`${slugify(selectedAsset.title)}.png`} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
+              <a href={selectedAsset.sourceUrl} download={`${slugify(selectedAsset.title)}.png`} className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-50">
                 Download
               </a>
               <button
                 type="button"
                 onClick={() => void deleteAsset(selectedAsset.id)}
                 disabled={busyAction === `delete:${selectedAsset.id}`}
-                className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
+                className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
               >
                 {busyAction === `delete:${selectedAsset.id}` ? "Deleting..." : "Delete image"}
               </button>
             </div>
-            <div className="space-y-3 border-t border-stone-200 pt-4">
-              <h3 className="text-sm font-medium text-stone-950">Edit image</h3>
+            <div className="space-y-3 border-t border-pink-100 pt-4">
+              <h3 className="text-sm font-medium text-[#7a1f4f]">Edit image</h3>
               <textarea
                 value={editPrompt}
                 onChange={(event) => setEditPrompt(event.target.value)}
                 placeholder="Describe one change"
-                className="min-h-[132px] w-full rounded-[1.25rem] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none placeholder:text-stone-400"
+                className="min-h-[132px] w-full rounded-[1.5rem] border border-pink-200 bg-[linear-gradient(180deg,_rgba(255,244,250,0.98),_rgba(255,250,214,0.95))] px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300 shadow-inner shadow-pink-100/60"
               />
               <button
                 type="button"
                 onClick={() => void editAsset()}
                 disabled={busyAction !== null}
-                className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.28)] transition hover:scale-[1.01] disabled:opacity-60"
               >
                 {busyAction === "edit" ? "Applying..." : "Apply edit"}
               </button>
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-[320px] items-center justify-center rounded-[1.25rem] border border-dashed border-stone-300 bg-stone-50 px-6 text-center text-sm text-stone-500">
+          <div className="flex h-full min-h-[320px] items-center justify-center rounded-[1.5rem] border border-dashed border-pink-200 bg-[linear-gradient(180deg,_rgba(255,241,247,0.95),_rgba(255,249,212,0.9))] px-6 text-center text-sm text-pink-500">
             Open a saved image to edit or delete it.
           </div>
         )}

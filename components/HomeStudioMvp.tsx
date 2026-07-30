@@ -104,6 +104,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       .filter((asset): asset is ProjectDetail["assets"][number] => Boolean(asset));
     return latestBatch.length ? latestBatch : visibleAssets.slice(0, 4);
   }, [visibleAssets, currentBatchIds]);
+  const hasWorkspaceState = Boolean(visibleAssets.length || prompt.trim() || referenceImageDataUrl || editorDraft.trim() || activeProjectId);
 
   function getActionLabels(kind: "generate" | "edit" | "variation") {
     if (kind === "edit") {
@@ -122,6 +123,31 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       loading: "Generating images. This can take a little while.",
       success: "Images ready.",
     };
+  }
+
+  function buildProjectSummary(project: ProjectDetail): ProjectSummary {
+    return {
+      id: project.id,
+      name: project.name,
+      brief: project.brief,
+      visualDirection: project.visualDirection,
+      updatedAt: project.updatedAt,
+      lastActivityAt: project.lastActivityAt,
+      assetCount: project.assetCount,
+      messageCount: project.messageCount,
+    };
+  }
+
+  function clearComposerState() {
+    setPrompt("");
+    setReferenceImageDataUrl(null);
+    setReferenceImageName(null);
+    setSelectedAssetId(null);
+    setEditorDraft("");
+    setCurrentBatchIds([]);
+    setHiddenAssetIds([]);
+    setActiveProject(null);
+    setActiveProjectId(null);
   }
 
   async function ensureProject() {
@@ -175,16 +201,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       setActiveProject(project);
       setActiveProjectId(project.id);
       setProjects((current) => {
-        const summary: ProjectSummary = {
-          id: project.id,
-          name: project.name,
-          brief: project.brief,
-          visualDirection: project.visualDirection,
-          updatedAt: project.updatedAt,
-          lastActivityAt: project.lastActivityAt,
-          assetCount: project.assetCount,
-          messageCount: project.messageCount,
-        };
+        const summary = buildProjectSummary(project);
         return [summary, ...current.filter((item) => item.id !== project.id)];
       });
       setCurrentBatchIds(batchIds);
@@ -214,16 +231,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
     if (!project) return;
     setActiveProjectId(project.id);
     setProjects((current) => {
-      const summary: ProjectSummary = {
-        id: project.id,
-        name: project.name,
-        brief: project.brief,
-        visualDirection: project.visualDirection,
-        updatedAt: project.updatedAt,
-        lastActivityAt: project.lastActivityAt,
-        assetCount: project.assetCount,
-        messageCount: project.messageCount,
-      };
+      const summary = buildProjectSummary(project);
       return [summary, ...current.filter((item) => item.id !== project.id)];
     });
   }
@@ -335,38 +343,29 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
     }
   }
 
-  async function resetProject() {
+  async function startNewSession() {
     if (!activeProjectId) {
-      setPrompt("");
-      setReferenceImageDataUrl(null);
-      setReferenceImageName(null);
-      setSelectedAssetId(null);
-      setEditorDraft("");
-      setCurrentBatchIds([]);
+      clearComposerState();
       return;
     }
 
-    const toastId = toast.loading("Resetting workspace...");
+    const currentProjectId = activeProjectId;
+    const toastId = toast.loading("Starting a fresh session...");
     setBusyAction("reset");
     try {
-      const response = await fetch(`/api/studio/projects/${activeProjectId}/reset`, {
+      const response = await fetch(`/api/studio/projects/${currentProjectId}/reset`, {
         method: "POST",
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || !data?.project) {
-        throw new Error(data?.error || "Project reset failed.");
+        throw new Error(data?.error || "New session failed.");
       }
       const project = data.project as ProjectDetail;
-      syncProject(project);
-      setCurrentBatchIds([]);
-      setSelectedAssetId(project.assets[0]?.id || null);
-      setPrompt("");
-      setReferenceImageDataUrl(null);
-      setReferenceImageName(null);
-      setEditorDraft("");
-      toast.success(data.deletedAssetCount ? `Reset complete. ${data.deletedAssetCount} unsaved ${data.deletedAssetCount === 1 ? "image" : "images"} removed.` : "Reset complete.", { id: toastId });
+      setProjects((current) => [buildProjectSummary(project), ...current.filter((item) => item.id !== project.id)]);
+      clearComposerState();
+      toast.success(data.deletedAssetCount ? `Fresh session ready. ${data.deletedAssetCount} unsaved ${data.deletedAssetCount === 1 ? "image" : "images"} cleared.` : "Fresh session ready.", { id: toastId });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Project reset failed.", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "New session failed.", { id: toastId });
     } finally {
       setBusyAction(null);
     }
@@ -396,24 +395,27 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 text-stone-950">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,183,212,0.42),_transparent_28%),linear-gradient(180deg,_#fff6d6_0%,_#fff7fb_48%,_#fff0b8_100%)] text-[#5f2141]">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+        <section className="rounded-[2rem] border border-pink-200/80 bg-white/78 p-5 shadow-[0_18px_60px_rgba(255,129,181,0.18)] backdrop-blur md:p-6">
           <div className="space-y-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-stone-950 md:text-4xl">Create</h1>
+            <div className="inline-flex w-fit rounded-full border border-yellow-200 bg-yellow-100/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
+              Bubblegum Studio
+            </div>
+            <h1 className="text-3xl font-semibold tracking-tight text-[#7a1f4f] md:text-4xl">Create</h1>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder="Describe the image you want"
-              className="min-h-[164px] w-full resize-none rounded-[1.5rem] border border-stone-200 bg-stone-50 px-5 py-4 text-base text-stone-950 outline-none placeholder:text-stone-400"
+              className="min-h-[164px] w-full resize-none rounded-[1.75rem] border border-pink-200 bg-[linear-gradient(180deg,_rgba(255,244,250,0.98),_rgba(255,250,214,0.95))] px-5 py-4 text-base text-[#6d2141] outline-none placeholder:text-pink-300 shadow-inner shadow-pink-100/60"
             />
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
+              <label className="inline-flex cursor-pointer items-center rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-100">
                 Reference
                 <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleReferenceUpload(event.target.files?.[0] || null)} />
               </label>
               {referenceImageName ? (
-                <button type="button" onClick={() => void handleReferenceUpload(null)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
+                <button type="button" onClick={() => void handleReferenceUpload(null)} className="rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-800 transition hover:bg-yellow-100">
                   Clear
                 </button>
               ) : null}
@@ -422,47 +424,60 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   type="button"
                   onClick={() => void runCommand("generate", prompt, null, 4)}
                   disabled={busyAction !== null || loadingProject}
-                  className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                  className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.35)] transition hover:scale-[1.01] disabled:opacity-60"
                 >
                   {busyAction === "generate" ? "Generating..." : "Generate"}
                 </button>
               ) : (
                 <SignInButton mode="modal" forceRedirectUrl="/" signUpForceRedirectUrl="/">
-                  <button className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800">
+                  <button className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.35)] transition hover:scale-[1.01]">
                     Generate
                   </button>
                 </SignInButton>
               )}
               <button
                 type="button"
-                onClick={() => void resetProject()}
-                disabled={busyAction !== null}
-                className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                onClick={() => void startNewSession()}
+                disabled={busyAction !== null || !hasWorkspaceState}
+                className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-50 disabled:opacity-60"
               >
-                {busyAction === "reset" ? "Resetting..." : "Reset"}
+                {busyAction === "reset" ? "Clearing..." : "New session"}
               </button>
             </div>
             {referenceImageDataUrl ? (
-              <img src={referenceImageDataUrl} alt={referenceImageName || "Reference image"} className="h-28 w-28 rounded-2xl border border-stone-200 object-cover" />
+              <img src={referenceImageDataUrl} alt={referenceImageName || "Reference image"} className="h-28 w-28 rounded-[1.25rem] border border-pink-200 object-cover shadow-[0_10px_30px_rgba(255,170,205,0.28)]" />
             ) : null}
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-4 shadow-sm md:p-5">
+        <section className="rounded-[2rem] border border-yellow-200/80 bg-white/82 p-4 shadow-[0_18px_60px_rgba(255,208,64,0.18)] backdrop-blur md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-medium text-stone-950">Results</h2>
+            <div>
+              <h2 className="text-lg font-medium text-[#7a1f4f]">Results</h2>
+              {results.length ? <p className="mt-1 text-sm text-pink-600">Keep what you want, then clear the board for the next round.</p> : null}
+            </div>
             <div className="flex items-center gap-2">
+              {results.length ? (
+                <button
+                  type="button"
+                  onClick={() => void startNewSession()}
+                  disabled={busyAction !== null}
+                  className="rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-sm font-medium text-pink-700 transition hover:bg-pink-100 disabled:opacity-60"
+                >
+                  {busyAction === "reset" ? "Clearing..." : "New session"}
+                </button>
+              ) : null}
               {results.length ? (
                 <button
                   type="button"
                   onClick={() => void saveBatchToLibrary(results.map((asset) => asset.id))}
                   disabled={busyAction !== null}
-                  className="rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                  className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900 transition hover:bg-yellow-100 disabled:opacity-60"
                 >
                   {busyAction === "save-batch" ? "Saving..." : "Save all"}
                 </button>
               ) : null}
-              {loadingProject ? <span className="text-sm text-stone-500">Loading...</span> : null}
+              {loadingProject ? <span className="text-sm text-pink-500">Loading...</span> : null}
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -470,8 +485,8 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
               <article
                 key={asset.id}
                 className={asset.id === selectedAssetId
-                  ? "overflow-hidden rounded-[1.5rem] border border-stone-950 bg-white"
-                  : "overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white"
+                  ? "overflow-hidden rounded-[1.75rem] border border-pink-400 bg-white/95 shadow-[0_16px_40px_rgba(255,124,185,0.22)]"
+                  : "overflow-hidden rounded-[1.75rem] border border-pink-100 bg-white/90 shadow-[0_10px_24px_rgba(255,213,115,0.16)]"
                 }
               >
                 <button
@@ -485,7 +500,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   <button
                     type="button"
                     onClick={() => setSelectedAssetId(asset.id)}
-                    className="text-sm text-stone-700 hover:text-stone-950"
+                    className="text-sm font-medium text-pink-700 hover:text-pink-900"
                   >
                     Open
                   </button>
@@ -494,8 +509,8 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                     onClick={() => void saveToLibrary(asset.id, !asset.isSaved)}
                     disabled={busyAction === `save:${asset.id}`}
                     className={asset.isSaved
-                      ? "rounded-full bg-stone-950 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-                      : "rounded-full border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                      ? "rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+                      : "rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900 hover:bg-yellow-100 disabled:opacity-60"
                     }
                   >
                     {busyAction === `save:${asset.id}` ? "Saving..." : asset.isSaved ? "Saved" : "Save"}
@@ -503,7 +518,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                 </div>
               </article>
             )) : (
-              <div className="md:col-span-2 xl:col-span-4 rounded-[1.5rem] border border-dashed border-stone-300 bg-stone-50 px-6 py-12 text-center text-sm text-stone-500">
+              <div className="md:col-span-2 xl:col-span-4 rounded-[1.75rem] border border-dashed border-pink-200 bg-[linear-gradient(180deg,_rgba(255,241,247,0.95),_rgba(255,249,212,0.9))] px-6 py-12 text-center text-sm text-pink-500">
                 Generate to see results.
               </div>
             )}
@@ -511,10 +526,10 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
         </section>
 
         {selectedAsset ? (
-          <section className="rounded-[2rem] border border-stone-200 bg-white p-5 shadow-sm md:p-6">
+          <section className="rounded-[2rem] border border-pink-200/80 bg-white/82 p-5 shadow-[0_18px_60px_rgba(255,129,181,0.16)] backdrop-blur md:p-6">
             <div className="grid gap-5 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
               <div className="space-y-3">
-                <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-56 w-full rounded-[1.5rem] border border-stone-200 object-cover" />
+                <img src={selectedAsset.sourceUrl} alt={selectedAsset.title} className="h-56 w-full rounded-[1.75rem] border border-pink-200 object-cover shadow-[0_14px_32px_rgba(255,177,209,0.28)]" />
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -522,22 +537,30 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                       onClick={() => void saveToLibrary(selectedAsset.id, !selectedAsset.isSaved)}
                       disabled={busyAction === `save:${selectedAsset.id}`}
                       className={selectedAsset.isSaved
-                        ? "rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                        : "rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                        ? "rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                        : "rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-100 disabled:opacity-60"
                       }
                     >
                       {busyAction === `save:${selectedAsset.id}` ? "Saving..." : selectedAsset.isSaved ? "Saved to library" : "Save to library"}
                     </button>
-                    <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">
+                    <button type="button" onClick={() => downloadImage(selectedAsset)} className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-50">
                       Download
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      onClick={() => void startNewSession()}
+                      disabled={busyAction !== null}
+                      className="rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-100 disabled:opacity-60"
+                    >
+                      {busyAction === "reset" ? "Clearing..." : "New session"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void runCommand("variation", "Create four variations of this image. Keep the core subject and composition while exploring new treatments.", selectedAsset.id, 4)}
                       disabled={busyAction !== null}
-                      className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                      className="rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-100 disabled:opacity-60"
                     >
                       {busyAction === "variation" ? "Varying..." : "Create variations"}
                     </button>
@@ -545,7 +568,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                       type="button"
                       onClick={() => void deleteAsset(selectedAsset.id)}
                       disabled={busyAction === `delete:${selectedAsset.id}`}
-                      className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
                     >
                       {busyAction === `delete:${selectedAsset.id}` ? "Deleting..." : "Delete image"}
                     </button>
@@ -553,18 +576,18 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                 </div>
               </div>
               <div className="space-y-3">
-                <h2 className="text-lg font-medium text-stone-950">Edit</h2>
+                <h2 className="text-lg font-medium text-[#7a1f4f]">Edit</h2>
                 <textarea
                   value={editorDraft}
                   onChange={(event) => setEditorDraft(event.target.value)}
                   placeholder="Describe one change"
-                  className="min-h-[140px] w-full rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none placeholder:text-stone-400"
+                  className="min-h-[140px] w-full rounded-[1.75rem] border border-pink-200 bg-[linear-gradient(180deg,_rgba(255,244,250,0.98),_rgba(255,250,214,0.95))] px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300 shadow-inner shadow-pink-100/60"
                 />
                 <button
                   type="button"
                   onClick={() => void runCommand("edit", editorDraft, selectedAssetId, 1)}
                   disabled={!selectedAssetId || busyAction !== null}
-                  className="rounded-full bg-stone-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                  className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.28)] transition hover:scale-[1.01] disabled:opacity-60"
                 >
                   {busyAction === "edit" ? "Applying..." : "Apply edit"}
                 </button>

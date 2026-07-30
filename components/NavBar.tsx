@@ -6,16 +6,16 @@ import NavBarClerkControls from "@/components/NavBarClerkControls";
 
 export default function NavBar() {
   return (
-    <header className="sticky top-0 z-50 border-b border-stone-200 bg-white/75 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-pink-200/80 bg-[linear-gradient(90deg,rgba(255,246,205,0.82),rgba(255,235,246,0.84),rgba(255,248,216,0.82))] backdrop-blur-xl">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
-        <Link href="/" className="flex items-center gap-3 text-lg font-semibold tracking-[-0.02em] text-stone-950">
-          <Image src="/smartarts-e_logo.png" alt="SmartArts" width={96} height={96} className="h-10 w-10 rounded-2xl object-cover" />
+        <Link href="/" className="flex items-center gap-3 text-lg font-semibold tracking-[-0.02em] text-[#7a1f4f]">
+          <Image src="/smartarts-e_logo.png" alt="SmartArts" width={96} height={96} className="h-10 w-10 rounded-2xl border border-pink-200 object-cover shadow-[0_10px_24px_rgba(255,170,205,0.28)]" />
           <span>SmartArts</span>
         </Link>
 
         <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-3 text-sm text-stone-600 lg:flex">
-            <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 font-medium text-orange-900">
+          <div className="hidden items-center gap-3 text-sm text-pink-600 lg:flex">
+            <span className="rounded-full border border-yellow-300 bg-yellow-100/90 px-3 py-1.5 font-medium text-pink-700 shadow-[0_8px_18px_rgba(255,221,102,0.24)]">
               AI Art Production
             </span>
             <span>Concept, generation, and delivery</span>

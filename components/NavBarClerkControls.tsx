@@ -11,7 +11,7 @@ export default function NavBarClerkControls() {
   if (!hasClerkClient) {
     return (
       <>
-        <Link href="/app/billing" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
+        <Link href="/app/billing" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Billing
         </Link>
       </>
@@ -21,10 +21,10 @@ export default function NavBarClerkControls() {
   return (
     <>
       <SignedIn>
-        <Link href="/library" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
+        <Link href="/library" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Library
         </Link>
-        <Link href="/app/billing" className="text-sm px-3 py-1.5 rounded border hover:bg-gray-50">
+        <Link href="/app/billing" className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900 hover:bg-yellow-100">
           Billing
         </Link>
       </SignedIn>
@@ -51,10 +51,10 @@ function SignedOutAuthButtons({ nextTarget }: { nextTarget: string }) {
   return (
     <SignedOut>
       <SignInButton mode="modal" forceRedirectUrl={nextTarget} signUpForceRedirectUrl={nextTarget}>
-        <button className="text-sm px-3 py-1.5 rounded bg-black text-white">Sign in</button>
+        <button className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-3 py-1.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,95,178,0.28)]">Sign in</button>
       </SignInButton>
       <SignUpButton mode="modal" forceRedirectUrl={nextTarget} signInForceRedirectUrl={nextTarget}>
-        <button className="text-sm px-3 py-1.5 rounded border">Create account</button>
+        <button className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900">Create account</button>
       </SignUpButton>
     </SignedOut>
   );
