@@ -139,7 +139,6 @@ export async function listEditorAssetsForClerkUser(clerkUserId: string): Promise
       kind: "image",
       project: {
         user: { clerkUserId },
-        status: EDITOR_LIBRARY_PROJECT_STATUS,
       },
     },
     orderBy: { createdAt: "desc" },
@@ -152,10 +151,17 @@ export async function listEditorAssetsForClerkUser(clerkUserId: string): Promise
       height: true,
       metadata: true,
       createdAt: true,
+      project: {
+        select: {
+          status: true,
+        },
+      },
     },
   });
 
-  return assets.map(mapEditorAsset);
+  return assets
+    .filter((asset) => isEditorLibraryAsset(asset.metadata, asset.project.status))
+    .map(mapEditorAsset);
 }
 
 export async function getEditorAssetForClerkUser(clerkUserId: string, assetId: string) {
@@ -428,6 +434,15 @@ function mapEditorAsset(asset: {
     height: asset.height,
     createdAt: asset.createdAt.toISOString(),
   };
+}
+
+function isEditorLibraryAsset(metadata: unknown, projectStatus: string) {
+  if (projectStatus === EDITOR_LIBRARY_PROJECT_STATUS) {
+    return true;
+  }
+
+  const record = asRecord(metadata);
+  return record.saved === true;
 }
 
 function normalizeEditorCanvas(value: unknown): EditorCanvasDocument {
