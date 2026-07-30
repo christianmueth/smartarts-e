@@ -383,9 +383,15 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       setReferenceImageName(null);
       return;
     }
-    const nextValue = await readReferenceImageDataUrl(file);
-    setReferenceImageDataUrl(nextValue);
-    setReferenceImageName(file.name);
+    try {
+      const nextValue = await readReferenceImageDataUrl(file);
+      setReferenceImageDataUrl(nextValue);
+      setReferenceImageName(file.name);
+    } catch (error) {
+      setReferenceImageDataUrl(null);
+      setReferenceImageName(null);
+      toast.error(error instanceof Error ? error.message : "Reference image could not be processed.");
+    }
   }
 
   function downloadImage(asset: ProjectDetail["assets"][number]) {
@@ -654,7 +660,7 @@ function readFileAsDataUrl(file: File) {
 
 function loadImageElement(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
+    const image = new window.Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Reference image could not be processed."));
     image.src = src;
