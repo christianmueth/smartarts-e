@@ -839,9 +839,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       }
       return data.plan as EditorAssistPlan;
     } catch (error) {
-      if (error instanceof Error && /General drawing is unavailable/i.test(error.message)) {
-        throw error;
-      }
       const document = documentRef.current;
       return placeLocalFallbackPlan(
         buildLocalCanvasFallbackPlan(prompt, buildSelectedLayerForAssist(), document),

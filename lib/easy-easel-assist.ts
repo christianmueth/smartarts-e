@@ -112,7 +112,7 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
   }
 
   if (isDoodlePrompt(prompt)) {
-    throw new Error("General drawing is unavailable because the configured AI model could not return a valid object plan. Please restore the model provider and try again.");
+    return placeGeneratedPlan(buildGenericDoodleFallbackPlan({ ...input, prompt }), { ...input, prompt });
   }
 
   return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), { ...input, prompt });
@@ -231,7 +231,7 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
 
   const sketchEntry = findSketchLexiconEntry(lower);
   if (sketchEntry) {
-    return sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message));
+    return embellishSketchPlan(sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message)));
   }
 
   if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
@@ -1070,22 +1070,48 @@ function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAs
 function buildGenericDoodleFallbackPlan(input: EaselAssistInput): EditorAssistPlan {
   const subject = extractSubjectLabel(input.prompt) || "Doodle";
   const seed = hashText(input.prompt);
-  const centerX = input.document.width * (0.32 + (seed % 360) / 1000);
-  const centerY = input.document.height * (0.3 + (Math.floor(seed / 360) % 280) / 1000);
-  const size = Math.min(input.document.width, input.document.height) * 0.2;
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.44;
+  const size = Math.min(input.document.width, input.document.height) * 0.24;
   const stroke = ["#ff5fb2", "#4d8cff", "#2ca24f", "#e84a5f"][seed % 4];
   const accent = ["#ffb200", "#ff8a5b", "#5abf9a", "#8e6cff"][Math.floor(seed / 7) % 4];
+  const secondary = ["#174a8b", "#7a1f4f", "#1d6b3d", "#7a4b2a"][Math.floor(seed / 19) % 4];
+  const left = centerX - size * 0.62;
+  const right = centerX + size * 0.62;
+  const top = centerY - size * 0.58;
+  const bottom = centerY + size * 0.58;
 
   return {
     mode: "canvas",
-    assistantMessage: `Doodling ${subject} with easel tools.`,
+    assistantMessage: `Sketching an expressive brush study for ${subject}.`,
     actions: [
-      { tool: "ellipse", label: "Doodle form", x: centerX - size * 0.56, y: centerY - size * 0.5, width: size * 1.12, height: size, stroke, fill: withAlpha(stroke, 0.16), strokeWidth: 5 },
-      { tool: "brush", label: "Doodle contour", points: [centerX - size * 0.5, centerY + size * 0.12, centerX - size * 0.24, centerY - size * 0.54, centerX + size * 0.28, centerY - size * 0.44, centerX + size * 0.52, centerY + size * 0.1, centerX + size * 0.1, centerY + size * 0.48, centerX - size * 0.5, centerY + size * 0.12], stroke, strokeWidth: 6 },
-      { tool: "brush", label: "Doodle structure", points: [centerX - size * 0.3, centerY + size * 0.04, centerX, centerY - size * 0.22, centerX + size * 0.3, centerY + size * 0.04, centerX + size * 0.06, centerY + size * 0.24], stroke: accent, strokeWidth: 5 },
-      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.28, centerY + size * 0.3, centerX - size * 0.06, centerY + size * 0.1, centerX + size * 0.18, centerY + size * 0.28, centerX + size * 0.32, centerY + size * 0.12], stroke, strokeWidth: 4 },
-      { tool: "brush", label: "Doodle ground", points: [centerX - size * 0.58, centerY + size * 0.56, centerX - size * 0.2, centerY + size * 0.6, centerX + size * 0.2, centerY + size * 0.56, centerX + size * 0.6, centerY + size * 0.6], stroke: accent, strokeWidth: 4 },
-      { tool: "ellipse", label: "Doodle accent", x: centerX - size * 0.12, y: centerY + size * 0.1, width: size * 0.24, height: size * 0.18, stroke: accent, fill: withAlpha(accent, 0.32), strokeWidth: 3 },
+      { tool: "brush", label: "Outer silhouette", points: [left, centerY + size * 0.12, left + size * 0.12, top + size * 0.16, centerX - size * 0.08, top, right - size * 0.12, top + size * 0.2, right, centerY + size * 0.06, right - size * 0.14, bottom - size * 0.04, centerX + size * 0.08, bottom, left + size * 0.06, bottom - size * 0.12, left, centerY + size * 0.12], stroke, strokeWidth: 8 },
+      { tool: "brush", label: "Primary structure", points: [left + size * 0.14, centerY + size * 0.08, centerX - size * 0.16, centerY - size * 0.26, centerX + size * 0.22, centerY - size * 0.12, right - size * 0.16, centerY + size * 0.14], stroke: accent, strokeWidth: 7 },
+      { tool: "brush", label: "Cross structure", points: [centerX - size * 0.42, centerY + size * 0.3, centerX - size * 0.04, centerY + size * 0.06, centerX + size * 0.36, centerY + size * 0.32], stroke: secondary, strokeWidth: 6 },
+      { tool: "brush", label: "Interior contour", points: [centerX - size * 0.22, centerY - size * 0.18, centerX + size * 0.04, centerY - size * 0.28, centerX + size * 0.28, centerY - size * 0.02, centerX + size * 0.08, centerY + size * 0.2], stroke, strokeWidth: 5 },
+      { tool: "brush", label: "Detail stroke 1", points: [centerX - size * 0.32, centerY + size * 0.18, centerX - size * 0.1, centerY + size * 0.02, centerX + size * 0.1, centerY + size * 0.16], stroke: accent, strokeWidth: 4 },
+      { tool: "brush", label: "Detail stroke 2", points: [centerX - size * 0.02, centerY - size * 0.34, centerX + size * 0.12, centerY - size * 0.48, centerX + size * 0.28, centerY - size * 0.32], stroke: secondary, strokeWidth: 4 },
+      { tool: "brush", label: "Hatching", points: [left + size * 0.22, bottom - size * 0.28, left + size * 0.42, bottom - size * 0.12, left + size * 0.34, bottom - size * 0.38, left + size * 0.56, bottom - size * 0.18, left + size * 0.5, bottom - size * 0.46, left + size * 0.72, bottom - size * 0.26], stroke: secondary, strokeWidth: 3 },
+      { tool: "brush", label: "Highlight", points: [left + size * 0.14, top + size * 0.26, centerX - size * 0.06, top + size * 0.1, centerX + size * 0.12, top + size * 0.16], stroke: "#ffffff", strokeWidth: 4 },
+      { tool: "brush", label: "Ground shadow", points: [left - size * 0.02, bottom + size * 0.08, centerX - size * 0.22, bottom + size * 0.14, centerX + size * 0.22, bottom + size * 0.1, right + size * 0.04, bottom + size * 0.14], stroke: secondary, strokeWidth: 5 },
+    ],
+  };
+}
+
+function embellishSketchPlan(plan: EditorAssistPlan): EditorAssistPlan {
+  const bounds = getActionBounds(plan.actions);
+  if (!bounds) return plan;
+  const x = bounds.x;
+  const y = bounds.y;
+  const width = bounds.width;
+  const height = bounds.height;
+  return {
+    ...plan,
+    actions: [
+      ...plan.actions,
+      { tool: "brush", label: "Grounding shadow", points: [x - width * 0.06, y + height + 18, x + width * 0.28, y + height + 25, x + width * 0.68, y + height + 19, x + width * 1.06, y + height + 24], stroke: "#6d5561", strokeWidth: 4 },
+      { tool: "brush", label: "Sketch hatching", points: [x + width * 0.18, y + height * 0.74, x + width * 0.31, y + height * 0.62, x + width * 0.28, y + height * 0.82, x + width * 0.43, y + height * 0.67, x + width * 0.4, y + height * 0.87, x + width * 0.56, y + height * 0.72], stroke: "#7a1f4f", strokeWidth: 3 },
+      { tool: "brush", label: "Sketch highlight", points: [x + width * 0.2, y + height * 0.2, x + width * 0.42, y + height * 0.12, x + width * 0.62, y + height * 0.18], stroke: "#ffffff", strokeWidth: 3 },
     ],
   };
 }
