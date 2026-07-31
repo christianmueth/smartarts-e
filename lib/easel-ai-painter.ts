@@ -27,9 +27,9 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const actions: EditorAssistAction[] = [];
 
   appendUnderpainting(actions, pixels, sampling, bounds);
-  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.58, 1.85, (pixel) => isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.66, 1.4, (pixel) => !isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
@@ -42,7 +42,7 @@ function appendUnderpainting(
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
   bounds: { x: number; y: number; width: number; height: number }
 ) {
-  const stride = Math.max(2, Math.round(Math.min(sampling.columns, sampling.rows) / 34));
+  const stride = 1;
   for (let y = 0; y < sampling.rows; y += stride) {
     for (let x = 0; x < sampling.columns; x += stride) {
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
@@ -54,7 +54,7 @@ function appendUnderpainting(
         y: bounds.y + y * sampling.cellHeight,
         width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth * stride + 1),
         height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight * stride + 1),
-        fill: toColor(quantizePixel(pixel, 24)),
+        fill: toColor(quantizePixel(pixel, 16)),
         stroke: "rgba(0,0,0,0)",
         strokeWidth: 1,
         opacity: 1,
@@ -279,6 +279,47 @@ function appendFaceFeaturePass(
       opacity: 0.94,
     });
   }
+
+  appendPortraitLandmark(actions, pixels, sampling, bounds, face, "left eye", 0.2, 0.12, 0.42);
+  appendPortraitLandmark(actions, pixels, sampling, bounds, face, "right eye", 0.2, 0.58, 0.88);
+  appendPortraitLandmark(actions, pixels, sampling, bounds, face, "mouth", 0.64, 0.5, 0.7);
+}
+
+function appendPortraitLandmark(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  face: { left: number; right: number; top: number; bottom: number },
+  label: string,
+  verticalPosition: number,
+  horizontalStart: number,
+  horizontalEnd: number
+) {
+  const targetY = Math.round(face.top + (face.bottom - face.top) * verticalPosition);
+  const left = Math.round(face.left + (face.right - face.left) * horizontalStart);
+  const right = Math.round(face.left + (face.right - face.left) * horizontalEnd);
+  let best = { x: left, y: targetY, score: -1, pixel: sample(pixels, sampling.columns, sampling.rows, left, targetY) };
+  for (let y = Math.max(face.top, targetY - 2); y <= Math.min(face.bottom, targetY + 2); y += 1) {
+    for (let x = left; x <= right; x += 1) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      const score = localContrast(pixels, sampling.columns, sampling.rows, x, y) + (255 - brightness(pixel));
+      if (score > best.score) best = { x, y, score, pixel };
+    }
+  }
+  const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+  const centerX = bounds.x + (best.x + 0.5) * sampling.cellWidth;
+  const centerY = bounds.y + (best.y + 0.5) * sampling.cellHeight;
+  const length = label === "mouth" ? unit * 2.1 : unit * 1.35;
+  actions.push({
+    tool: "brush",
+    pass: "facial-features",
+    label: label === "mouth" ? "Mouth detail" : `${label.replace(/\b\w/g, (character) => character.toUpperCase())} detail`,
+    points: [centerX - length / 2, centerY, centerX, centerY + unit * 0.08, centerX + length / 2, centerY],
+    stroke: toColor(darkenPixel(best.pixel, 0.52)),
+    strokeWidth: Math.max(1.5, unit * 0.48),
+    opacity: 0.96,
+  });
 }
 
 function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
@@ -289,4 +330,8 @@ function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x
     colorDistance(pixel, sample(data, columns, rows, x, y - 1)),
     colorDistance(pixel, sample(data, columns, rows, x, y + 1))
   );
+}
+
+function darkenPixel(pixel: Pixel, factor: number): Pixel {
+  return { red: Math.round(pixel.red * factor), green: Math.round(pixel.green * factor), blue: Math.round(pixel.blue * factor), alpha: pixel.alpha };
 }
