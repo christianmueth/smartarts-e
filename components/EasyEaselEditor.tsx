@@ -26,6 +26,8 @@ type Props = {
   initialProject: EditorProjectDetail | null;
 };
 
+const LOCAL_EDITOR_PROJECTS_STORAGE_KEY = "easy-easel-local-projects-v1";
+
 export default function EasyEaselEditor({ initialAssets, initialProjects, initialProject }: Props) {
   const initialDocument = initialProject?.canvas || createEmptyEditorDocument();
   const initialSelectionId = getTopLayerId(initialDocument);
@@ -80,6 +82,15 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   useEffect(() => {
     documentRef.current = document;
   }, [document]);
+
+  useEffect(() => {
+    const localProjects = readLocalEditorProjects();
+    if (!localProjects.length) {
+      return;
+    }
+
+    setProjects((current) => mergeProjectSummaries(current, localProjects.map(summarizeProject)));
+  }, []);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -915,41 +926,104 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         previewUrl,
       };
 
-      if (!activeProjectId) {
-        const response = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+      if (activeProjectId && isLocalEditorProjectId(activeProjectId)) {
+        const project = saveProjectLocally({
+          projectId: activeProjectId,
+          name: body.name,
+          canvas: body.canvas,
+          previewUrl,
         });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok || !data?.project) {
-          throw new Error(data?.error || "Project creation failed.");
-        }
-        const project = data.project as EditorProjectDetail;
         setActiveProjectId(project.id);
         setProjectName(project.name);
-        setProjects((current) => [summarizeProject(project), ...current.filter((item) => item.id !== project.id)]);
-      } else {
-        const response = await fetch(`/api/projects/${activeProjectId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok || !data?.project) {
-          throw new Error(data?.error || "Project save failed.");
-        }
-        const project = data.project as EditorProjectDetail;
-        setProjectName(project.name);
-        setProjects((current) => [summarizeProject(project), ...current.filter((item) => item.id !== project.id)]);
+        setProjects((current) => mergeProjectSummaries(current, [summarizeProject(project)]));
+        toast.success("Project saved on this device.", { id: toastId });
+        return;
       }
 
-      toast.success("Project saved.", { id: toastId });
+      const remoteProject = await saveProjectRemotely(activeProjectId, body);
+      if (remoteProject) {
+        setActiveProjectId(remoteProject.id);
+        setProjectName(remoteProject.name);
+        setProjects((current) => mergeProjectSummaries(current, [summarizeProject(remoteProject)]));
+        toast.success("Project saved.", { id: toastId });
+        return;
+      }
+
+      const localProject = saveProjectLocally({
+        projectId: activeProjectId,
+        name: body.name,
+        canvas: body.canvas,
+        previewUrl,
+      });
+      setActiveProjectId(localProject.id);
+      setProjectName(localProject.name);
+      setProjects((current) => mergeProjectSummaries(current, [summarizeProject(localProject)]));
+      toast.success("Project saved on this device.", { id: toastId });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Project save failed.", { id: toastId });
     } finally {
       setBusyAction(null);
     }
+  }
+
+  async function saveProjectRemotely(activeId: string | null, body: { name: string; canvas: EditorCanvasDocument; previewUrl: string | null }) {
+    if (!activeId) {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.project) {
+        return null;
+      }
+      return data.project as EditorProjectDetail;
+    }
+
+    const response = await fetch(`/api/projects/${activeId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok && data?.ok && data?.project) {
+      return data.project as EditorProjectDetail;
+    }
+
+    if (data?.error === "Project not found.") {
+      const createResponse = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const createData = await createResponse.json().catch(() => null);
+      if (createResponse.ok && createData?.ok && createData?.project) {
+        return createData.project as EditorProjectDetail;
+      }
+    }
+
+    return null;
+  }
+
+  function saveProjectLocally(input: { projectId: string | null; name: string; canvas: EditorCanvasDocument; previewUrl: string | null }) {
+    const currentProjects = readLocalEditorProjects();
+    const id = isLocalEditorProjectId(input.projectId) ? input.projectId : `local-${createId("project")}`;
+    const existing = currentProjects.find((project) => project.id === id);
+    const project: EditorProjectDetail = {
+      id,
+      name: input.name,
+      canvas: input.canvas,
+      previewUrl: input.previewUrl,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    writeLocalEditorProjects([
+      project,
+      ...currentProjects.filter((item) => item.id !== project.id),
+    ].slice(0, 24));
+
+    return project;
   }
 
   async function saveCanvasToLibrary() {
@@ -992,6 +1066,19 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     if (!projectId) return;
     const toastId = toast.loading("Loading project...");
     try {
+      if (isLocalEditorProjectId(projectId)) {
+        const localProject = readLocalEditorProjects().find((project) => project.id === projectId);
+        if (!localProject) {
+          throw new Error("Local project not found.");
+        }
+        setActiveProjectId(localProject.id);
+        setProjectName(localProject.name);
+        resetDocument(localProject.canvas);
+        setProjects((current) => mergeProjectSummaries(current, [summarizeProject(localProject)]));
+        toast.success("Local project loaded.", { id: toastId });
+        return;
+      }
+
       const response = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || !data?.project) {
@@ -1562,6 +1649,74 @@ function serializeDocument(document: EditorCanvasDocument) {
 
 function deserializeDocument(value: string) {
   return JSON.parse(value) as EditorCanvasDocument;
+}
+
+function readLocalEditorProjects() {
+  if (typeof window === "undefined") {
+    return [] as EditorProjectDetail[];
+  }
+
+  try {
+    const stored = window.localStorage.getItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY);
+    if (!stored) {
+      return [] as EditorProjectDetail[];
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return [] as EditorProjectDetail[];
+    }
+
+    return parsed
+      .map((project) => normalizeStoredEditorProject(project))
+      .filter(Boolean) as EditorProjectDetail[];
+  } catch {
+    return [] as EditorProjectDetail[];
+  }
+}
+
+function writeLocalEditorProjects(projects: EditorProjectDetail[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY, JSON.stringify(projects.slice(0, 24)));
+}
+
+function normalizeStoredEditorProject(value: unknown) {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+  if (!record) return null;
+
+  const id = typeof record.id === "string" ? record.id : "";
+  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Untitled project";
+  if (!id) return null;
+
+  return {
+    id,
+    name,
+    previewUrl: typeof record.previewUrl === "string" ? record.previewUrl : null,
+    canvas: deserializeDocument(serializeDocument(record.canvas ?? createEmptyEditorDocument())),
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString(),
+  } satisfies EditorProjectDetail;
+}
+
+function mergeProjectSummaries(current: EditorProjectSummary[], incoming: EditorProjectSummary[]) {
+  const merged = [...incoming, ...current];
+  const seen = new Set<string>();
+  return merged.filter((project) => {
+    if (seen.has(project.id)) {
+      return false;
+    }
+    seen.add(project.id);
+    return true;
+  }).slice(0, 24);
+}
+
+function isLocalEditorProjectId(projectId: string | null | undefined) {
+  return Boolean(projectId && projectId.startsWith("local-"));
 }
 
 function resolveLayerSelection(document: EditorCanvasDocument, selectedLayerIds: string[], selectedLayerId: string | null | undefined) {
