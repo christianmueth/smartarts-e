@@ -27,12 +27,15 @@ type Props = {
 };
 
 export default function EasyEaselEditor({ initialAssets, initialProjects, initialProject }: Props) {
+  const initialDocument = initialProject?.canvas || createEmptyEditorDocument();
+  const initialSelectionId = getTopLayerId(initialDocument);
   const [assets, setAssets] = useState(initialAssets);
   const [projects, setProjects] = useState(initialProjects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(initialProject?.id || null);
   const [projectName, setProjectName] = useState(initialProject?.name || "Untitled project");
-  const [document, setDocument] = useState<EditorCanvasDocument>(initialProject?.canvas || createEmptyEditorDocument());
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(getTopLayerId(initialProject?.canvas || createEmptyEditorDocument()));
+  const [document, setDocument] = useState<EditorCanvasDocument>(initialDocument);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(initialSelectionId);
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>(initialSelectionId ? [initialSelectionId] : []);
   const [tool, setTool] = useState<Tool>("select");
   const [strokeColor, setStrokeColor] = useState("#ff5fb2");
   const [fillColor, setFillColor] = useState("#ffe09c");
@@ -41,9 +44,11 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [aiPrompt, setAiPrompt] = useState("");
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
+  const [selectionRect, setSelectionRect] = useState<EditorCropRect | null>(null);
+  const [lassoPoints, setLassoPoints] = useState<number[]>([]);
   const [assistantCursor, setAssistantCursor] = useState<{ x: number; y: number; label: string } | null>(null);
   const [historyState, setHistoryState] = useState(() => ({
-    snapshots: [serializeDocument(initialProject?.canvas || createEmptyEditorDocument())],
+    snapshots: [serializeDocument(initialDocument)],
     index: 0,
   }));
 
@@ -53,12 +58,23 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const nodeRefs = useRef<Record<string, Konva.Group | null>>({});
   const isDrawingRef = useRef(false);
   const cropAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const selectionGestureRef = useRef<{ x: number; y: number; mode: "rect" | "lasso" } | null>(null);
+  const selectionDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; anchorId: string } | null>(null);
+  const selectionBoundsDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; startX: number; startY: number } | null>(null);
 
   const selectedLayer = useMemo(
-    () => document.layers.find((layer) => layer.id === selectedLayerId) ?? null,
-    [document.layers, selectedLayerId]
+    () => document.layers.find((layer) => layer.id === selectedLayerId) ?? document.layers.find((layer) => selectedLayerIds.includes(layer.id)) ?? null,
+    [document.layers, selectedLayerId, selectedLayerIds]
   );
   const selectedImageLayer = selectedLayer?.kind === "image" ? selectedLayer as EditorImageLayer : null;
+  const selectedLayers = useMemo(
+    () => document.layers.filter((layer) => selectedLayerIds.includes(layer.id)),
+    [document.layers, selectedLayerIds]
+  );
+  const multiSelectionBounds = useMemo(
+    () => selectedLayers.length > 1 ? getCombinedLayerBounds(selectedLayers) : null,
+    [selectedLayers]
+  );
 
   useEffect(() => {
     documentRef.current = document;
@@ -66,7 +82,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
   useEffect(() => {
     const transformer = transformerRef.current;
-    const selectedNode = selectedLayerId ? nodeRefs.current[selectedLayerId] : null;
+    const selectedNode = selectedLayerId && selectedLayerIds.length === 1 ? nodeRefs.current[selectedLayerId] : null;
     if (!transformer) return;
     if (selectedNode && selectedLayer?.kind !== "line") {
       transformer.nodes([selectedNode]);
@@ -74,7 +90,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       transformer.nodes([]);
     }
     transformer.getLayer()?.batchDraw();
-  }, [selectedLayerId, selectedLayer, document.layers]);
+  }, [selectedLayerId, selectedLayerIds.length, selectedLayer, document.layers]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -85,7 +101,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       const isMeta = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
 
-      if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerId) {
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerIds.length) {
         event.preventDefault();
         deleteSelectedLayer();
         return;
@@ -103,7 +119,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         return;
       }
 
-      if (isMeta && key === "d" && selectedLayerId) {
+      if (isMeta && key === "d" && selectedLayerIds.length) {
         event.preventDefault();
         duplicateSelectedLayer();
       }
@@ -111,12 +127,24 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedLayerId, historyState.index, historyState.snapshots.length, selectedLayer]);
+  }, [selectedLayerIds, historyState.index, historyState.snapshots.length, selectedLayer]);
 
-  function commitDocument(nextDocument: EditorCanvasDocument, nextSelectedLayerId?: string | null) {
+  function setSelection(nextLayerIds: string[], nextPrimaryId?: string | null) {
+    const resolved = resolveLayerSelection(documentRef.current, nextLayerIds, nextPrimaryId ?? selectedLayerId);
+    setSelectedLayerIds(resolved.selectedLayerIds);
+    setSelectedLayerId(resolved.selectedLayerId);
+  }
+
+  function commitDocument(nextDocument: EditorCanvasDocument, nextSelection?: { selectedLayerId?: string | null; selectedLayerIds?: string[] }) {
     documentRef.current = nextDocument;
     setDocument(nextDocument);
-    setSelectedLayerId(resolveSelectedLayerId(nextDocument, nextSelectedLayerId ?? selectedLayerId));
+    const resolved = resolveLayerSelection(
+      nextDocument,
+      nextSelection?.selectedLayerIds ?? selectedLayerIds,
+      nextSelection?.selectedLayerId ?? selectedLayerId
+    );
+    setSelectedLayerIds(resolved.selectedLayerIds);
+    setSelectedLayerId(resolved.selectedLayerId);
     setHistoryState((current) => {
       const snapshot = serializeDocument(nextDocument);
       const trimmed = current.snapshots.slice(0, current.index + 1);
@@ -131,20 +159,27 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     });
   }
 
-  function resetDocument(nextDocument: EditorCanvasDocument, options?: { selectedLayerId?: string | null }) {
+  function resetDocument(nextDocument: EditorCanvasDocument, options?: { selectedLayerId?: string | null; selectedLayerIds?: string[] }) {
     documentRef.current = nextDocument;
     setDocument(nextDocument);
-    setSelectedLayerId(resolveSelectedLayerId(nextDocument, options?.selectedLayerId ?? getTopLayerId(nextDocument)));
+    const resolved = resolveLayerSelection(nextDocument, options?.selectedLayerIds ?? [], options?.selectedLayerId ?? getTopLayerId(nextDocument));
+    setSelectedLayerIds(resolved.selectedLayerIds);
+    setSelectedLayerId(resolved.selectedLayerId);
     setHistoryState({
       snapshots: [serializeDocument(nextDocument)],
       index: 0,
     });
     setCropRect(null);
+    setSelectionRect(null);
+    setLassoPoints([]);
   }
 
-  function mutateDocument(mutator: (current: EditorCanvasDocument) => EditorCanvasDocument, nextSelectedLayerId?: string | null) {
+  function mutateDocument(
+    mutator: (current: EditorCanvasDocument) => EditorCanvasDocument,
+    nextSelection?: { selectedLayerId?: string | null; selectedLayerIds?: string[] }
+  ) {
     const nextDocument = mutator(documentRef.current);
-    commitDocument(nextDocument, nextSelectedLayerId);
+    commitDocument(nextDocument, nextSelection);
   }
 
   function setLiveDocument(mutator: (current: EditorCanvasDocument) => EditorCanvasDocument) {
@@ -160,8 +195,12 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       const nextDocument = deserializeDocument(current.snapshots[nextIndex]);
       documentRef.current = nextDocument;
       setDocument(nextDocument);
-      setSelectedLayerId((previous) => resolveSelectedLayerId(nextDocument, previous));
+      const resolved = resolveLayerSelection(nextDocument, selectedLayerIds, selectedLayerId);
+      setSelectedLayerIds(resolved.selectedLayerIds);
+      setSelectedLayerId(resolved.selectedLayerId);
       setCropRect(null);
+      setSelectionRect(null);
+      setLassoPoints([]);
       return { ...current, index: nextIndex };
     });
   }
@@ -173,8 +212,12 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       const nextDocument = deserializeDocument(current.snapshots[nextIndex]);
       documentRef.current = nextDocument;
       setDocument(nextDocument);
-      setSelectedLayerId((previous) => resolveSelectedLayerId(nextDocument, previous));
+      const resolved = resolveLayerSelection(nextDocument, selectedLayerIds, selectedLayerId);
+      setSelectedLayerIds(resolved.selectedLayerIds);
+      setSelectedLayerId(resolved.selectedLayerId);
       setCropRect(null);
+      setSelectionRect(null);
+      setLassoPoints([]);
       return { ...current, index: nextIndex };
     });
   }
@@ -198,7 +241,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     mutateDocument((current) => ({
       ...current,
       layers: [...current.layers, layer],
-    }), id);
+    }), { selectedLayerId: id, selectedLayerIds: [id] });
     setTool("select");
   }
 
@@ -222,29 +265,34 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     mutateDocument((current) => ({
       ...current,
       layers: [...current.layers, layer],
-    }), id);
+    }), { selectedLayerId: id, selectedLayerIds: [id] });
     setTool("select");
   }
 
   function duplicateSelectedLayer() {
-    if (!selectedLayer) return;
-    const duplicate = JSON.parse(JSON.stringify(selectedLayer)) as EditorLayer;
-    duplicate.id = createId(selectedLayer.kind);
-    duplicate.name = `${selectedLayer.name} copy`;
-    duplicate.x += 24;
-    duplicate.y += 24;
+    if (!selectedLayerIds.length) return;
+    const duplicates: EditorLayer[] = [];
+    for (const layer of documentRef.current.layers.filter((item) => selectedLayerIds.includes(item.id))) {
+      const duplicate = JSON.parse(JSON.stringify(layer)) as EditorLayer;
+      duplicate.id = createId(layer.kind);
+      duplicate.name = `${layer.name} copy`;
+      duplicate.x += 24;
+      duplicate.y += 24;
+      duplicates.push(duplicate);
+    }
+    if (!duplicates.length) return;
     mutateDocument((current) => ({
       ...current,
-      layers: [...current.layers, duplicate],
-    }), duplicate.id);
+      layers: [...current.layers, ...duplicates],
+    }), { selectedLayerId: duplicates[duplicates.length - 1]?.id ?? null, selectedLayerIds: duplicates.map((layer) => layer.id) });
   }
 
   function deleteSelectedLayer() {
-    if (!selectedLayer) return;
+    if (!selectedLayerIds.length) return;
     mutateDocument((current) => ({
       ...current,
-      layers: current.layers.filter((layer) => layer.id !== selectedLayer.id),
-    }), null);
+      layers: current.layers.filter((layer) => !selectedLayerIds.includes(layer.id)),
+    }), { selectedLayerId: null, selectedLayerIds: [] });
   }
 
   function moveLayer(layerId: string, direction: "up" | "down") {
@@ -257,14 +305,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       const [layer] = layers.splice(index, 1);
       layers.splice(targetIndex, 0, layer);
       return { ...current, layers };
-    }, layerId);
+    }, { selectedLayerId: layerId, selectedLayerIds: [layerId] });
   }
 
   function updateLayer(layerId: string, updater: (layer: EditorLayer) => EditorLayer) {
     mutateDocument((current) => ({
       ...current,
       layers: current.layers.map((layer) => layer.id === layerId ? updater(layer) : layer),
-    }), layerId);
+    }), { selectedLayerId: layerId, selectedLayerIds: [layerId] });
   }
 
   function insertAssetAsLayer(asset: EditorAsset) {
@@ -291,11 +339,143 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     mutateDocument((current) => ({
       ...current,
       layers: [...current.layers, imageLayer],
-    }), id);
+    }), { selectedLayerId: id, selectedLayerIds: [id] });
   }
 
   function setLayerPosition(layerId: string, x: number, y: number) {
     updateLayer(layerId, (layer) => ({ ...layer, x, y }));
+  }
+
+  function beginSelectionDrag(layerId: string) {
+    const activeIds = selectedLayerIds.includes(layerId) ? selectedLayerIds : [layerId];
+    selectionDragRef.current = {
+      layerIds: activeIds,
+      anchorId: layerId,
+      originById: Object.fromEntries(
+        documentRef.current.layers
+          .filter((layer) => activeIds.includes(layer.id))
+          .map((layer) => [layer.id, { x: layer.x, y: layer.y }])
+      ),
+    };
+    if (!selectedLayerIds.includes(layerId) || selectedLayerIds.length === 1) {
+      setSelection(activeIds, layerId);
+    }
+  }
+
+  function dragSelection(layerId: string, x: number, y: number) {
+    const currentDrag = selectionDragRef.current;
+    if (!currentDrag || currentDrag.anchorId !== layerId || currentDrag.layerIds.length < 2) {
+      return;
+    }
+    const anchorOrigin = currentDrag.originById[layerId];
+    if (!anchorOrigin) return;
+    const dx = x - anchorOrigin.x;
+    const dy = y - anchorOrigin.y;
+    setLiveDocument((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (!currentDrag.layerIds.includes(layer.id) || layer.id === layerId) {
+          return layer;
+        }
+        const origin = currentDrag.originById[layer.id];
+        if (!origin) return layer;
+        return {
+          ...layer,
+          x: origin.x + dx,
+          y: origin.y + dy,
+        };
+      }),
+    }));
+  }
+
+  function endSelectionDrag(layerId: string, x: number, y: number) {
+    const currentDrag = selectionDragRef.current;
+    selectionDragRef.current = null;
+    if (!currentDrag || currentDrag.anchorId !== layerId || currentDrag.layerIds.length < 2) {
+      setLayerPosition(layerId, x, y);
+      return;
+    }
+    const anchorOrigin = currentDrag.originById[layerId];
+    if (!anchorOrigin) {
+      setLayerPosition(layerId, x, y);
+      return;
+    }
+    const dx = x - anchorOrigin.x;
+    const dy = y - anchorOrigin.y;
+    mutateDocument((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (!currentDrag.layerIds.includes(layer.id)) {
+          return layer;
+        }
+        const origin = currentDrag.originById[layer.id];
+        if (!origin) return layer;
+        return {
+          ...layer,
+          x: layer.id === layerId ? x : origin.x + dx,
+          y: layer.id === layerId ? y : origin.y + dy,
+        };
+      }),
+    }), { selectedLayerId: layerId, selectedLayerIds: currentDrag.layerIds });
+  }
+
+  function handleSelectionBoundsDragStart() {
+    if (!selectedLayerIds.length || !multiSelectionBounds) return;
+    selectionBoundsDragRef.current = {
+      layerIds: selectedLayerIds,
+      startX: multiSelectionBounds.x,
+      startY: multiSelectionBounds.y,
+      originById: Object.fromEntries(
+        documentRef.current.layers
+          .filter((layer) => selectedLayerIds.includes(layer.id))
+          .map((layer) => [layer.id, { x: layer.x, y: layer.y }])
+      ),
+    };
+  }
+
+  function handleSelectionBoundsDragMove(x: number, y: number) {
+    const currentDrag = selectionBoundsDragRef.current;
+    if (!currentDrag) return;
+    const dx = x - currentDrag.startX;
+    const dy = y - currentDrag.startY;
+    setLiveDocument((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (!currentDrag.layerIds.includes(layer.id)) {
+          return layer;
+        }
+        const origin = currentDrag.originById[layer.id];
+        if (!origin) return layer;
+        return {
+          ...layer,
+          x: origin.x + dx,
+          y: origin.y + dy,
+        };
+      }),
+    }));
+  }
+
+  function handleSelectionBoundsDragEnd(x: number, y: number) {
+    const currentDrag = selectionBoundsDragRef.current;
+    selectionBoundsDragRef.current = null;
+    if (!currentDrag) return;
+    const dx = x - currentDrag.startX;
+    const dy = y - currentDrag.startY;
+    mutateDocument((current) => ({
+      ...current,
+      layers: current.layers.map((layer) => {
+        if (!currentDrag.layerIds.includes(layer.id)) {
+          return layer;
+        }
+        const origin = currentDrag.originById[layer.id];
+        if (!origin) return layer;
+        return {
+          ...layer,
+          x: origin.x + dx,
+          y: origin.y + dy,
+        };
+      }),
+    }), { selectedLayerId, selectedLayerIds: currentDrag.layerIds });
   }
 
   function handleTransformEnd(layerId: string) {
@@ -332,9 +512,11 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     mutateDocument((current) => ({ ...current, backgroundColor: value }));
   }
 
-  function handleStageMouseDown() {
+  function handleStageMouseDown(event: Konva.KonvaEventObject<MouseEvent>) {
     const point = getCanvasPointer(stageRef.current, zoom);
     if (!point) return;
+
+    const isStageTarget = event.target === stageRef.current || event.target === event.target.getStage();
 
     if (tool === "brush" || tool === "eraser") {
       const id = createId("line");
@@ -360,7 +542,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       };
       documentRef.current = nextDocument;
       setDocument(nextDocument);
-      setSelectedLayerId(id);
+      setSelection([id], id);
       return;
     }
 
@@ -368,6 +550,28 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       cropAnchorRef.current = point;
       setCropRect({ x: point.x, y: point.y, width: 1, height: 1 });
       return;
+    }
+
+    if (tool === "select" && isStageTarget) {
+      const wantsLasso = event.evt.altKey;
+      const wantsRangeSelection = wantsLasso || event.evt.detail >= 2 || event.evt.shiftKey;
+      if (!wantsRangeSelection) {
+        setSelection([], null);
+        return;
+      }
+
+      selectionGestureRef.current = {
+        x: point.x,
+        y: point.y,
+        mode: wantsLasso ? "lasso" : "rect",
+      };
+      if (wantsLasso) {
+        setLassoPoints([point.x, point.y]);
+        setSelectionRect(null);
+      } else {
+        setSelectionRect({ x: point.x, y: point.y, width: 1, height: 1 });
+        setLassoPoints([]);
+      }
     }
   }
 
@@ -392,17 +596,41 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     if (tool === "crop" && cropAnchorRef.current) {
       const { x, y } = cropAnchorRef.current;
       setCropRect(normalizeCropRect(x, y, point.x, point.y));
+      return;
+    }
+
+    if (tool === "select" && selectionGestureRef.current) {
+      if (selectionGestureRef.current.mode === "rect") {
+        const nextRect = normalizeCropRect(selectionGestureRef.current.x, selectionGestureRef.current.y, point.x, point.y);
+        setSelectionRect(nextRect);
+        const nextIds = collectLayersInRect(documentRef.current.layers, nextRect).map((layer) => layer.id);
+        setSelection(nextIds, nextIds[nextIds.length - 1] ?? null);
+        return;
+      }
+
+      setLassoPoints((current) => {
+        const nextPoints = [...current, point.x, point.y];
+        const nextIds = collectLayersInLasso(documentRef.current.layers, nextPoints).map((layer) => layer.id);
+        setSelection(nextIds, nextIds[nextIds.length - 1] ?? null);
+        return nextPoints;
+      });
     }
   }
 
   function handleStageMouseUp() {
     if (isDrawingRef.current) {
       isDrawingRef.current = false;
-      commitDocument(documentRef.current, selectedLayerId);
+      commitDocument(documentRef.current, { selectedLayerId, selectedLayerIds });
       return;
     }
     if (tool === "crop") {
       cropAnchorRef.current = null;
+      return;
+    }
+    if (tool === "select" && selectionGestureRef.current) {
+      selectionGestureRef.current = null;
+      setSelectionRect(null);
+      setLassoPoints([]);
     }
   }
 
@@ -517,7 +745,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         layers: [...documentRef.current.layers, imageLayer],
       };
     });
-    commitDocument(documentRef.current, getTopLayerId(documentRef.current));
+    const topLayerId = getTopLayerId(documentRef.current);
+    commitDocument(documentRef.current, { selectedLayerId: topLayerId, selectedLayerIds: topLayerId ? [topLayerId] : [] });
   }
 
   async function requestEaselAssistPlan(prompt: string) {
@@ -583,6 +812,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       };
       documentRef.current = workingDocument;
       setDocument(workingDocument);
+      setSelectedLayerIds([layer.id]);
       setSelectedLayerId(layer.id);
       lastLayerId = layer.id;
       await wait(140);
@@ -590,7 +820,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
     setAssistantCursor(null);
     setTool(previousTool);
-    commitDocument(workingDocument, lastLayerId);
+    commitDocument(workingDocument, { selectedLayerId: lastLayerId, selectedLayerIds: lastLayerId ? [lastLayerId] : [] });
   }
 
   async function runAi(kind: "generate" | "edit" | "variation") {
@@ -762,7 +992,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     setActiveProjectId(null);
     setProjectName("Untitled project");
     resetDocument(createEmptyEditorDocument());
-    setSelectedLayerId(null);
     setAiPrompt("");
     toast.message("Fresh canvas ready.");
   }
@@ -896,13 +1125,65 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     <Rect width={document.width} height={document.height} fill={document.backgroundColor} listening={false} />
                     {document.layers.map((layer) => renderLayer({
                       layer,
-                      isSelected: layer.id === selectedLayerId,
-                      onSelect: () => setSelectedLayerId(layer.id),
-                      onDragEnd: (x, y) => setLayerPosition(layer.id, x, y),
+                      isSelected: selectedLayerIds.includes(layer.id),
+                      onSelect: (event) => {
+                        if (tool !== "select") {
+                          setSelection([layer.id], layer.id);
+                          return;
+                        }
+                        if (event.evt.shiftKey || event.evt.ctrlKey || event.evt.metaKey) {
+                          const nextIds = selectedLayerIds.includes(layer.id)
+                            ? selectedLayerIds.filter((id) => id !== layer.id)
+                            : [...selectedLayerIds, layer.id];
+                          setSelection(nextIds, layer.id);
+                          return;
+                        }
+                        setSelection([layer.id], layer.id);
+                      },
+                      onDragStart: () => beginSelectionDrag(layer.id),
+                      onDragMove: (x, y) => dragSelection(layer.id, x, y),
+                      onDragEnd: (x, y) => endSelectionDrag(layer.id, x, y),
                       onTransformEnd: () => handleTransformEnd(layer.id),
                       onDoubleClick: () => handleTextEdit(layer.id),
                       nodeRefs,
                     }))}
+                    {selectionRect ? (
+                      <Rect
+                        x={selectionRect.x}
+                        y={selectionRect.y}
+                        width={selectionRect.width}
+                        height={selectionRect.height}
+                        stroke="#ff8a5b"
+                        dash={[10, 8]}
+                        fill="rgba(255,138,91,0.12)"
+                      />
+                    ) : null}
+                    {lassoPoints.length >= 4 ? (
+                      <Line
+                        points={lassoPoints}
+                        closed
+                        stroke="#ff8a5b"
+                        dash={[10, 8]}
+                        fill="rgba(255,138,91,0.08)"
+                        strokeWidth={3}
+                      />
+                    ) : null}
+                    {multiSelectionBounds ? (
+                      <Rect
+                        x={multiSelectionBounds.x}
+                        y={multiSelectionBounds.y}
+                        width={multiSelectionBounds.width}
+                        height={multiSelectionBounds.height}
+                        stroke="#ff5fb2"
+                        dash={[12, 10]}
+                        strokeWidth={3}
+                        fill="rgba(255,95,178,0.04)"
+                        draggable={tool === "select"}
+                        onDragStart={handleSelectionBoundsDragStart}
+                        onDragMove={(event) => handleSelectionBoundsDragMove(event.target.x(), event.target.y())}
+                        onDragEnd={(event) => handleSelectionBoundsDragEnd(event.target.x(), event.target.y())}
+                      />
+                    ) : null}
                     {cropRect ? (
                       <Rect
                         x={cropRect.x}
@@ -935,14 +1216,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                 <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">Layers</summary>
                 <div className="mt-3 space-y-2">
                   {[...document.layers].reverse().map((layer) => (
-                    <div key={layer.id} className={layer.id === selectedLayerId ? "rounded-[1rem] border border-pink-300 bg-white p-3" : "rounded-[1rem] border border-pink-100 bg-white/80 p-3"}>
-                      <button type="button" onClick={() => setSelectedLayerId(layer.id)} className="w-full text-left text-sm font-medium text-[#6d2141]">
+                    <div key={layer.id} className={selectedLayerIds.includes(layer.id) ? "rounded-[1rem] border border-pink-300 bg-white p-3" : "rounded-[1rem] border border-pink-100 bg-white/80 p-3"}>
+                      <button type="button" onClick={() => setSelection([layer.id], layer.id)} className="w-full text-left text-sm font-medium text-[#6d2141]">
                         {layer.name}
                       </button>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         <button type="button" onClick={() => moveLayer(layer.id, "up")} className="rounded-full border border-yellow-300 bg-yellow-50 px-2 py-1 text-yellow-900">Up</button>
                         <button type="button" onClick={() => moveLayer(layer.id, "down")} className="rounded-full border border-yellow-300 bg-yellow-50 px-2 py-1 text-yellow-900">Down</button>
-                        <button type="button" onClick={() => setSelectedLayerId(layer.id)} className="rounded-full border border-pink-200 bg-pink-50 px-2 py-1 text-pink-700">Select</button>
+                        <button type="button" onClick={() => setSelection(selectedLayerIds.includes(layer.id) ? selectedLayerIds.filter((id) => id !== layer.id) : [...selectedLayerIds, layer.id], layer.id)} className="rounded-full border border-pink-200 bg-pink-50 px-2 py-1 text-pink-700">{selectedLayerIds.includes(layer.id) ? "Deselect" : "Add"}</button>
                       </div>
                     </div>
                   ))}
@@ -1053,6 +1334,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   <p className="text-xs leading-6 text-pink-500">
                     Prompts here only use easel tools. Ask it to write text, explain a topic on-canvas, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
                   </p>
+                  <p className="text-xs leading-6 text-pink-400">
+                    In select mode, shift-drag or double-drag on empty canvas to grab a group. Hold Alt while dragging to lasso-select layers.
+                  </p>
                 </div>
               </details>
             </div>
@@ -1066,7 +1350,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 function renderLayer(input: {
   layer: EditorLayer;
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (event: Konva.KonvaEventObject<MouseEvent>) => void;
+  onDragStart: () => void;
+  onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformEnd: () => void;
   onDoubleClick: () => void;
@@ -1084,6 +1370,8 @@ function renderLayer(input: {
     },
     onClick: input.onSelect,
     onTap: input.onSelect,
+    onDragStart: input.onDragStart,
+    onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => input.onDragMove(event.target.x(), event.target.y()),
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => input.onDragEnd(event.target.x(), event.target.y()),
     onTransformEnd: input.onTransformEnd,
   };
@@ -1256,11 +1544,24 @@ function deserializeDocument(value: string) {
   return JSON.parse(value) as EditorCanvasDocument;
 }
 
-function resolveSelectedLayerId(document: EditorCanvasDocument, selectedLayerId: string | null | undefined) {
-  if (selectedLayerId && document.layers.some((layer) => layer.id === selectedLayerId)) {
-    return selectedLayerId;
+function resolveLayerSelection(document: EditorCanvasDocument, selectedLayerIds: string[], selectedLayerId: string | null | undefined) {
+  const validIds = Array.from(new Set(selectedLayerIds)).filter((id) => document.layers.some((layer) => layer.id === id));
+  const nextPrimaryId = selectedLayerId && validIds.includes(selectedLayerId)
+    ? selectedLayerId
+    : validIds[validIds.length - 1] ?? getTopLayerId(document);
+
+  if (!nextPrimaryId) {
+    return {
+      selectedLayerId: null,
+      selectedLayerIds: [],
+    };
   }
-  return getTopLayerId(document);
+
+  const nextIds = validIds.length ? validIds : [nextPrimaryId];
+  return {
+    selectedLayerId: nextPrimaryId,
+    selectedLayerIds: nextIds,
+  };
 }
 
 function getTopLayerId(document: EditorCanvasDocument) {
@@ -1282,6 +1583,91 @@ function normalizeCropRect(x1: number, y1: number, x2: number, y2: number): Edit
     width: Math.max(1, Math.abs(x2 - x1)),
     height: Math.max(1, Math.abs(y2 - y1)),
   };
+}
+
+function getLayerBounds(layer: EditorLayer) {
+  if (layer.kind === "line") {
+    const points = layer.points;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let index = 0; index < points.length - 1; index += 2) {
+      minX = Math.min(minX, points[index]);
+      minY = Math.min(minY, points[index + 1]);
+      maxX = Math.max(maxX, points[index]);
+      maxY = Math.max(maxY, points[index + 1]);
+    }
+    const padding = Math.max(8, layer.strokeWidth / 2);
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: Math.max(1, maxX - minX + padding * 2),
+      height: Math.max(1, maxY - minY + padding * 2),
+    };
+  }
+
+  return {
+    x: layer.x,
+    y: layer.y,
+    width: layer.width,
+    height: layer.height,
+  };
+}
+
+function getCombinedLayerBounds(layers: EditorLayer[]) {
+  if (!layers.length) return null;
+  const bounds = layers.map(getLayerBounds);
+  const minX = Math.min(...bounds.map((bound) => bound.x));
+  const minY = Math.min(...bounds.map((bound) => bound.y));
+  const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width));
+  const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height));
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function collectLayersInRect(layers: EditorLayer[], rect: EditorCropRect) {
+  return layers.filter((layer) => intersectsRect(getLayerBounds(layer), rect));
+}
+
+function collectLayersInLasso(layers: EditorLayer[], points: number[]) {
+  if (points.length < 6) return [];
+  return layers.filter((layer) => {
+    const bounds = getLayerBounds(layer);
+    const samplePoints = [
+      { x: bounds.x, y: bounds.y },
+      { x: bounds.x + bounds.width, y: bounds.y },
+      { x: bounds.x, y: bounds.y + bounds.height },
+      { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+    ];
+    return samplePoints.some((point) => pointInPolygon(point, points));
+  });
+}
+
+function intersectsRect(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
+  return a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
+}
+
+function pointInPolygon(point: { x: number; y: number }, polygon: number[]) {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 2; index < polygon.length; index += 2) {
+    const xi = polygon[index];
+    const yi = polygon[index + 1];
+    const xj = polygon[previous];
+    const yj = polygon[previous + 1];
+    const intersects = yi > point.y !== yj > point.y
+      && point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-6) + xi;
+    if (intersects) {
+      inside = !inside;
+    }
+    previous = index;
+  }
+  return inside;
 }
 
 function shiftPoints(points: number[], xOffset: number, yOffset: number) {
