@@ -24,6 +24,11 @@ type MathSolution = {
   steps: string[];
 };
 
+type DoodleDecomposition = {
+  subject: string;
+  parts: string[];
+};
+
 type SketchStyle = {
   stroke: string;
   fill: string;
@@ -100,7 +105,8 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return heuristicPlan;
   }
 
-  const llmPlan = await planWithLlm({ ...input, prompt });
+  const decomposition = isDoodlePrompt(prompt) ? await generateDoodleDecomposition(prompt) : null;
+  const llmPlan = await planWithLlm({ ...input, prompt }, decomposition);
   if (llmPlan) {
     return llmPlan;
   }
@@ -125,7 +131,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
   return buildExplanationLayout(input.document, topic, content, input.prompt);
 }
 
-async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
+async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecomposition | null = null): Promise<EditorAssistPlan | null> {
   const wantsDoodle = isDoodlePrompt(input.prompt);
   const selectedLayer = input.selectedLayer
     ? {
@@ -168,6 +174,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
           "Decompose unfamiliar objects into named parts: silhouette, major supports, repeated parts such as wheels or windows, and small identifying details before drawing.",
+          "When a decomposition is supplied, create at least one labeled action for every listed part, using that exact part name in the action label.",
           "Compose the object around the center of the document, preserve recognizable proportions, and keep all marks inside the canvas.",
           "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
@@ -180,6 +187,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
         content: JSON.stringify({
           prompt: input.prompt,
           document: input.document,
+          decomposition,
           selectedLayer,
           layers,
         }),
@@ -206,7 +214,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
 
   const parsed = safeJsonParse(result.content);
   const plan = normalizeAssistPlan(parsed, input.document);
-  if (wantsDoodle && !isUsableDoodlePlan(plan)) {
+  if (wantsDoodle && !isUsableDoodlePlan(plan, decomposition)) {
     return null;
   }
   return plan;
@@ -478,6 +486,43 @@ async function generateMathSolution(prompt: string): Promise<MathSolution | null
   );
   if (!result.ok) return null;
   return normalizeMathSolution(safeJsonParse(result.content));
+}
+
+async function generateDoodleDecomposition(prompt: string): Promise<DoodleDecomposition | null> {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      subject: { type: "string" },
+      parts: { type: "array", items: { type: "string" }, minItems: 4, maxItems: 6 },
+    },
+    required: ["subject", "parts"],
+  } as const;
+  const result = await callLLMResult(
+    [
+      {
+        role: "system",
+        content: [
+          "You are planning a simple, recognizable Easel doodle.",
+          "Return JSON only.",
+          "Identify the main visible object and list 4-6 concrete, drawable physical parts in drawing order.",
+          "Use short singular noun phrases such as 'front wheel', 'frame', 'handlebar', 'window row', or 'roof'.",
+          "Parts must make this specific object recognizable; never return generic terms like detail, accent, doodle, shape, or decoration.",
+          "Do not include text labels or instructions.",
+        ].join(" "),
+      },
+      { role: "user", content: prompt },
+    ],
+    180,
+    0.1,
+    {
+      guidedJson: schema,
+      responseFormat: { type: "json_schema", json_schema: { name: "easy_easel_doodle_parts", schema } },
+      timeoutMs: 12_000,
+    }
+  );
+  if (!result.ok) return null;
+  return normalizeDoodleDecomposition(safeJsonParse(result.content));
 }
 
 function buildFlowerSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
@@ -1243,11 +1288,28 @@ function isDoodlePrompt(prompt: string) {
   return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
 }
 
-function isUsableDoodlePlan(plan: EditorAssistPlan | null) {
+function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null) {
   if (!plan || plan.actions.length < 6) return false;
   const brushActions = plan.actions.filter((action) => action.tool === "brush");
   if (brushActions.length < 3) return false;
-  return brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8);
+  if (!brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8)) return false;
+  if (!decomposition) return true;
+  const labels = plan.actions.map((action) => String(action.label || "").toLowerCase());
+  return decomposition.parts.every((part) => {
+    const normalizedPart = part.toLowerCase();
+    return labels.some((label) => label.includes(normalizedPart) || normalizedPart.includes(label));
+  });
+}
+
+function normalizeDoodleDecomposition(value: unknown): DoodleDecomposition | null {
+  const record = asRecord(value);
+  const subject = cleanText(record.subject, 80);
+  const parts = Array.isArray(record.parts)
+    ? Array.from(new Set(record.parts.map((part) => cleanText(part, 48)).filter(Boolean))).slice(0, 6)
+    : [];
+  const hasGenericPart = parts.some((part) => /^(?:detail|accent|doodle|shape|decoration|object|part)$/i.test(part));
+  if (!subject || parts.length < 4 || hasGenericPart) return null;
+  return { subject, parts };
 }
 
 function normalizeMathSolution(value: unknown): MathSolution | null {
