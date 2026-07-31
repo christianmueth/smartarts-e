@@ -120,7 +120,7 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
 
 async function buildMathCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
   const solution = await generateMathSolution(input.prompt) || buildDeterministicMathSolution(input.prompt);
-  return solution ? buildMathSolutionLayout(input.document, solution, input.prompt) : null;
+  return solution ? buildMathSolutionLayout(input, solution) : null;
 }
 
 async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -132,7 +132,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
     return null;
   }
 
-  return buildExplanationLayout(input.document, topic, content, input.prompt);
+  return buildExplanationLayout(input, topic, content);
 }
 
 async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecomposition | null = null): Promise<EditorAssistPlan | null> {
@@ -1094,16 +1094,16 @@ function buildGenericDoodleFallbackPlan(input: EaselAssistInput): EditorAssistPl
 }
 
 function buildExplanationLayout(
-  document: EaselAssistInput["document"],
+  input: EaselAssistInput,
   topic: string,
-  content: ExplanationSections,
-  prompt: string
+  content: ExplanationSections
 ): EditorAssistPlan {
+  const document = input.document;
   const width = clamp(Math.min(document.width - 80, 760), 320, document.width - 40);
   const title = toTitleText(topic) || "Explanation";
-  const bodyLines = splitCanvasText(formatExplanationText(content), 62);
-  const cardHeight = Math.max(176, 94 + bodyLines.length * 30);
-  const placement = resolvePlanPlacement(document, prompt, width, cardHeight);
+  const bodyLines = splitCanvasText(formatExplanationText(content), 58);
+  const cardHeight = Math.max(196, 106 + bodyLines.length * 34);
+  const placement = resolveTeachingPlacement(input, width, cardHeight);
   const x = placement.x;
   const y = placement.y;
 
@@ -1147,24 +1147,24 @@ function buildExplanationLayout(
 }
 
 function buildMathSolutionLayout(
-  document: EaselAssistInput["document"],
+  input: EaselAssistInput,
   solution: MathSolution,
-  prompt: string
 ): EditorAssistPlan {
+  const document = input.document;
   const width = clamp(Math.min(document.width - 80, 820), 340, document.width - 40);
   const body = [`Result: ${solution.result}`, ...solution.steps.map((step, index) => `${index + 1}. ${step}`)].join("\n");
-  const bodyLines = splitCanvasText(body, 66);
-  const cardHeight = Math.max(190, 98 + bodyLines.length * 30);
-  const placement = resolvePlanPlacement(document, prompt, width, cardHeight);
+  const bodyLines = splitCanvasText(body, 58);
+  const cardHeight = Math.max(210, 110 + bodyLines.length * 34);
+  const placement = resolveTeachingPlacement(input, width, cardHeight);
   const x = placement.x;
   const y = placement.y;
   return {
     mode: "canvas",
     assistantMessage: `Working through ${solution.title}.`,
     actions: [
-      { tool: "rect", label: "Math solution box", x, y, width, height: cardHeight, stroke: "#4d8cff", fill: "rgba(226,242,255,0.88)", strokeWidth: 4 },
-      { tool: "text", label: "Math title", text: solution.title, x: x + 24, y: y + 22, width: width - 48, fontSize: 34, color: "#174a8b" },
-      { tool: "text", label: "Math working", text: bodyLines.join("\n"), x: x + 24, y: y + 80, width: width - 48, fontSize: 24, color: "#15385f" },
+      { tool: "rect", label: "Math solution box", x, y, width, height: cardHeight, stroke: "#4d8cff", fill: "rgba(226,242,255,0.94)", strokeWidth: 4 },
+      { tool: "text", label: "Math title", text: solution.title, x: x + 24, y: y + 22, width: width - 48, fontSize: 32, color: "#174a8b" },
+      { tool: "text", label: "Math working", text: bodyLines.join("\n"), x: x + 24, y: y + 82, width: width - 48, fontSize: 22, color: "#15385f" },
     ],
   };
 }
@@ -1206,6 +1206,44 @@ function resolvePlanPlacement(document: EaselAssistInput["document"], prompt: st
     x: Math.round(padding + xRatio * (maxX - padding)),
     y: Math.round(padding + yRatio * (maxY - padding)),
   };
+}
+
+function resolveTeachingPlacement(input: EaselAssistInput, width: number, height: number) {
+  const document = input.document;
+  const padding = 28;
+  const maxX = Math.max(padding, document.width - width - padding);
+  const maxY = Math.max(padding, document.height - height - padding);
+  const requested = readRequestedLocation(input.prompt);
+  if (requested) {
+    return resolvePlanPlacement(document, input.prompt, width, height);
+  }
+
+  const occupied = (input.layers || []).map((layer) => ({
+    x: layer.x,
+    y: layer.y,
+    width: layer.width,
+    height: layer.height,
+  }));
+  const candidates = [
+    { x: padding, y: padding },
+    { x: maxX, y: padding },
+    { x: padding, y: maxY },
+    { x: maxX, y: maxY },
+    { x: Math.round((document.width - width) / 2), y: padding },
+    { x: Math.round((document.width - width) / 2), y: maxY },
+  ];
+  const candidate = candidates.find((position) => !occupied.some((bounds) => intersectsBounds({ ...position, width, height }, bounds)));
+  return candidate || resolvePlanPlacement(document, input.prompt, width, height);
+}
+
+function intersectsBounds(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number }
+) {
+  return first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y;
 }
 
 function readRequestedLocation(prompt: string) {
@@ -1350,19 +1388,32 @@ function buildDeterministicMathSolution(prompt: string): MathSolution | null {
     }
   }
 
+  if (/fundamental theorem of calculus|\bftc\b|definite integral/i.test(compact)) {
+    return {
+      title: "Fundamental Theorem of Calculus",
+      result: "If F'(x) = f(x), then integral_a^b f(x) dx = F(b) - F(a).",
+      steps: [
+        "Find an antiderivative F(x) for the integrand f(x).",
+        "Evaluate F at the upper bound b.",
+        "Subtract the lower-bound value F(a): F(b) - F(a).",
+        "Example: integral_0^2 3x^2 dx = [x^3]_0^2 = 8.",
+      ],
+    };
+  }
+
   if (/\b(?:derivative|differentiate)\b/i.test(compact)) {
     return {
-      title: "Derivative setup",
-      result: "Use the power rule: d/dx[x^n] = n*x^(n-1).",
-      steps: ["Differentiate each term separately.", "Multiply each coefficient by its exponent, then reduce the exponent by 1."],
+      title: "Derivative method",
+      result: "For a power term, d/dx[c*x^n] = c*n*x^(n-1).",
+      steps: ["Differentiate each term separately.", "Multiply the coefficient by the exponent.", "Reduce the exponent by 1 and simplify constants."],
     };
   }
 
   if (/\b(?:elasticity|supply|demand|revenue|cost|profit|marginal)\b/i.test(compact)) {
     return {
       title: "Economics calculation setup",
-      result: "Substitute the given values into the relevant economics equation.",
-      steps: ["Write the relationship first, such as profit = revenue - cost or elasticity = (% change in Q)/(% change in P).", "Substitute the provided quantities and units, then interpret the sign and size of the result."],
+      result: "Choose the equation, substitute the data, then interpret sign, units, and size.",
+      steps: ["For profit use profit = total revenue - total cost.", "For marginal values use the derivative, such as MR = dTR/dQ.", "For elasticity use (% change in Q)/(% change in P): magnitude above 1 is elastic, below 1 is inelastic."],
     };
   }
 
@@ -1648,25 +1699,23 @@ function cleanCanvasParagraph(value: string) {
 }
 
 function splitCanvasText(value: string, maxLineLength: number) {
-  const words = cleanCanvasParagraph(value).split(/\s+/).filter(Boolean);
   const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxLineLength && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
+  const paragraphs = String(value || "").split(/\n+/).map((paragraph) => cleanCanvasParagraph(paragraph)).filter(Boolean);
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxLineLength && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
     }
+    if (current) lines.push(current);
   }
-
-  if (current) {
-    lines.push(current);
-  }
-
-  return lines.slice(0, 7);
+  return lines.slice(0, 16);
 }
 
 function normalizeExplanationSections(value: unknown, topic: string): ExplanationSections | null {
