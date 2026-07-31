@@ -22,7 +22,7 @@ export default async function PremiumSuitePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Premium Suite</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#7a1f4f]">Upgrade to Premium to unlock Premium Suite collaboration.</h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-pink-900/80">
-              Team workspaces, shared asset libraries, brand enforcement, approval workflows, and Premium Suite controls are included with the Premium monthly plan.
+              Free includes 10 image generations per UTC calendar month. Premium includes unlimited image generation, plus team workspaces, shared asset libraries, brand enforcement, approval workflows, and Premium Suite controls.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <a href="/app/billing" className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(255,95,178,0.28)]">Open billing</a>
@@ -49,6 +49,7 @@ export default async function PremiumSuitePage() {
               Premium Suite
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#7a1f4f]">Team workspaces and shared premium governance.</h1>
+            <p className="mt-2 text-sm text-pink-900/80">Unlimited image generation is included with your Premium plan.</p>
           </div>
           <a href="/app/billing" className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 hover:bg-pink-50">Billing</a>
         </div>

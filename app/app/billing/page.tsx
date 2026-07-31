@@ -6,6 +6,7 @@ import { getBillingSnapshotForClerkUser } from "@/lib/billing";
 export const dynamic = "force-dynamic";
 
 const premiumFeatures = [
+  "Unlimited image generation; Free includes 10 image generations each calendar month.",
   "AI-generated image placement in the whiteboard studio.",
   "Existing personal studio, archive, and editor workflows under one paid plan.",
   "Premium Suite with team workspaces, shared asset libraries, brand enforcement, and approval workflows.",
@@ -52,7 +53,7 @@ export default async function BillingPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Premium</p>
           <h2 className="mt-3 text-2xl font-semibold text-[#7a1f4f]">Premium includes everything paid in one plan.</h2>
           <p className="mt-3 text-sm leading-7 text-pink-900/80">
-            If you are already subscribed, use the billing portal to manage your subscription or cancel it at any time.
+            Free image generations reset at the start of each UTC calendar month. If you are already subscribed, use the billing portal to manage your subscription or cancel it at any time.
           </p>
           <ul className="mt-4 space-y-2 text-sm leading-7 text-pink-900/80">
             {premiumFeatures.map((feature) => (
