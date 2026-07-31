@@ -76,6 +76,43 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     transformer.getLayer()?.batchDraw();
   }, [selectedLayerId, selectedLayer, document.layers]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (shouldIgnoreEditorShortcut(event.target)) {
+        return;
+      }
+
+      const isMeta = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerId) {
+        event.preventDefault();
+        deleteSelectedLayer();
+        return;
+      }
+
+      if (isMeta && key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (isMeta && ((key === "z" && event.shiftKey) || key === "y")) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      if (isMeta && key === "d" && selectedLayerId) {
+        event.preventDefault();
+        duplicateSelectedLayer();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedLayerId, historyState.index, historyState.snapshots.length, selectedLayer]);
+
   function commitDocument(nextDocument: EditorCanvasDocument, nextSelectedLayerId?: string | null) {
     documentRef.current = nextDocument;
     setDocument(nextDocument);
@@ -1361,4 +1398,13 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(() => resolve(), ms);
   });
+}
+
+function shouldIgnoreEditorShortcut(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName;
+  return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 }
