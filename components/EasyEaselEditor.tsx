@@ -1036,7 +1036,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Write on the board, highlight something, circle a layer, point at an object, brush a mark, or erase a region."
+                    placeholder="Write on the board, explain a topic, highlight something, circle a layer, point at an object, brush a mark, or erase a region."
                     className="min-h-[150px] w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -1051,7 +1051,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     </button>
                   </div>
                   <p className="text-xs leading-6 text-pink-500">
-                    Prompts here only use easel tools. Ask it to write text, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
+                    Prompts here only use easel tools. Ask it to write text, explain a topic on-canvas, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
                   </p>
                 </div>
               </details>
@@ -1421,6 +1421,10 @@ function buildLocalCanvasFallbackPlan(
   const lower = prompt.toLowerCase();
   const target = getAssistTargetBounds(document, selectedLayer);
 
+  if (isExplanationFallbackPrompt(prompt)) {
+    return buildExplanationAssistPlan(document, extractExplanationFallbackTopic(prompt) || "this topic");
+  }
+
   if (/flower/.test(lower)) {
     return {
       mode: "canvas",
@@ -1566,6 +1570,61 @@ function buildLocalCanvasFallbackPlan(
   };
 }
 
+function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string): EditorAssistPlan {
+  const normalizedTopic = toDisplayFallbackTopic(topic);
+  const explanation = buildDeterministicExplanationText(topic);
+  const lines = wrapFallbackText(explanation, 64);
+  const width = Math.max(340, Math.min(document.width - 80, 760));
+  const x = Math.max(20, Math.min(document.width - width - 20, document.width / 2 - width / 2));
+  const bodyHeight = Math.max(170, 36 + lines.length * 38);
+  const y = Math.max(24, Math.min(document.height - bodyHeight - 120, document.height * 0.12));
+
+  return {
+    mode: "canvas",
+    assistantMessage: `Writing an explanation about ${topic}.`,
+    actions: [
+      {
+        tool: "rect",
+        label: "Explanation card",
+        x,
+        y,
+        width,
+        height: bodyHeight + 92,
+        stroke: "#ff8a5b",
+        fill: "rgba(255,248,220,0.78)",
+        strokeWidth: 4,
+      },
+      {
+        tool: "text",
+        label: "Explanation title",
+        text: `Explain: ${normalizedTopic}`,
+        x: x + 24,
+        y: y + 22,
+        width: width - 48,
+        fontSize: 34,
+        color: "#7a1f4f",
+      },
+      {
+        tool: "brush",
+        label: "Title underline",
+        points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
+        stroke: "#ff5fb2",
+        strokeWidth: 6,
+      },
+      {
+        tool: "text",
+        label: "Explanation body",
+        text: lines.join("\n"),
+        x: x + 24,
+        y: y + 92,
+        width: width - 48,
+        fontSize: 28,
+        color: "#5f2141",
+      },
+    ],
+  };
+}
+
 function buildFlowerAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
   const centerX = document.width * 0.5;
   const centerY = document.height * 0.42;
@@ -1654,6 +1713,53 @@ function extractFallbackText(prompt: string) {
   const normalized = cleaned || prompt.trim() || "Canvas note";
   const shortened = normalized.length > 48 ? `${normalized.slice(0, 45).trim()}...` : normalized;
   return shortened.charAt(0).toUpperCase() + shortened.slice(1);
+}
+
+function extractExplanationFallbackTopic(prompt: string) {
+  const cleaned = prompt.trim();
+  const direct = cleaned.match(/^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\s+(.+)$/i);
+  if (direct?.[1]) {
+    return direct[1].replace(/[?.!]+$/g, "").trim();
+  }
+  return null;
+}
+
+function isExplanationFallbackPrompt(prompt: string) {
+  return /^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\b/i.test(prompt.trim());
+}
+
+function toDisplayFallbackTopic(topic: string) {
+  const cleaned = topic.trim();
+  if (!cleaned) return "This topic";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function buildDeterministicExplanationText(topic: string) {
+  if (/photosynthesis/i.test(topic)) {
+    return "Photosynthesis is how plants make food from sunlight. Plants take in water through their roots and carbon dioxide from the air. Light energy helps turn those ingredients into sugar for growth. Oxygen is released as a byproduct.";
+  }
+
+  const subject = toDisplayFallbackTopic(topic);
+  return `${subject} can be explained by naming what it is, how it works, and why it matters. Start with the core idea, then describe the steps or parts involved, and finish with the result or purpose.`;
+}
+
+function wrapFallbackText(value: string, maxLineLength: number) {
+  const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLineLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) {
+    lines.push(current);
+  }
+  return lines.slice(0, 7);
 }
 
 function getAssistTargetBounds(document: EditorCanvasDocument, selectedLayer: EditorAssistSelectedLayer | null) {

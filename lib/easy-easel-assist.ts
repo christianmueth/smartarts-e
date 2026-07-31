@@ -51,6 +51,13 @@ const easelAssistSchema = {
 
 export async function planEasyEaselAssist(input: EaselAssistInput): Promise<EditorAssistPlan> {
   const prompt = cleanText(input.prompt, 1600);
+  if (isExplanationPrompt(prompt)) {
+    const explanationPlan = await buildExplanationCanvasPlan({ ...input, prompt });
+    if (explanationPlan) {
+      return explanationPlan;
+    }
+  }
+
   const heuristicPlan = buildHeuristicCanvasPlan({ ...input, prompt });
   if (heuristicPlan) {
     return heuristicPlan;
@@ -61,7 +68,19 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return llmPlan;
   }
 
-  throw new Error("Easy Easel only supports canvas-tool actions here. Ask it to write text, highlight, circle, underline, point, brush, or erase on the easel.");
+  return buildDeterministicFallbackCanvasPlan({ ...input, prompt });
+}
+
+async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
+  const topic = extractExplanationTopic(input.prompt) || "this topic";
+  const explanation = await generateExplanationText(topic);
+  const body = explanation || buildDeterministicExplanation(topic);
+
+  if (!body) {
+    return null;
+  }
+
+  return buildExplanationLayout(input.document, topic, body);
 }
 
 async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -144,6 +163,18 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
   const lower = input.prompt.toLowerCase();
   const targetLayer = resolveTargetLayer(input);
   const target = getTargetBounds(input.document, targetLayer);
+
+  if (/(flower|petal|daisy|rose|tulip|sunflower)/.test(lower)) {
+    return buildFlowerSketchPlan(input);
+  }
+
+  if (/(heart|love)/.test(lower)) {
+    return buildHeartSketchPlan(input);
+  }
+
+  if (/(sun|sunshine)/.test(lower)) {
+    return buildSunSketchPlan(input);
+  }
 
   if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
     return {
@@ -300,6 +331,312 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
   return null;
 }
 
+async function generateExplanationText(topic: string) {
+  const result = await callLLMResult(
+    [
+      {
+        role: "system",
+        content: [
+          "You write short, clear teaching explanations for an Easy Easel canvas.",
+          "Return plain text only.",
+          "Write 3 to 5 concise sentences.",
+          "Use simple language, but keep the explanation correct.",
+          "Do not use markdown, bullets, numbering, or headings.",
+          "Keep the total under 420 characters.",
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: `Explain ${topic}.`,
+      },
+    ],
+    260,
+    0.3,
+    { timeoutMs: 18_000 }
+  );
+
+  if (!result.ok) {
+    return null;
+  }
+
+  const cleaned = cleanCanvasParagraph(result.content);
+  return cleaned || null;
+}
+
+function buildFlowerSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.42;
+  const petalWidth = 96;
+  const petalHeight = 64;
+  const offsets = [
+    { x: -56, y: -10 },
+    { x: 10, y: -56 },
+    { x: 76, y: -10 },
+    { x: 10, y: 36 },
+  ];
+
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a flower with easel tools.",
+    actions: [
+      ...offsets.map((offset, index) => ({
+        tool: "ellipse" as const,
+        label: `Petal ${index + 1}`,
+        x: centerX + offset.x,
+        y: centerY + offset.y,
+        width: petalWidth,
+        height: petalHeight,
+        stroke: "#ff5fb2",
+        fill: "rgba(255,182,214,0.42)",
+        strokeWidth: 4,
+      })),
+      {
+        tool: "ellipse",
+        label: "Flower center",
+        x: centerX + 14,
+        y: centerY + 8,
+        width: 48,
+        height: 48,
+        stroke: "#ffb200",
+        fill: "rgba(255,214,82,0.75)",
+        strokeWidth: 4,
+      },
+      {
+        tool: "brush",
+        label: "Stem",
+        points: [
+          centerX + 38,
+          centerY + 54,
+          centerX + 30,
+          centerY + 126,
+          centerX + 24,
+          centerY + 188,
+        ],
+        stroke: "#2ca24f",
+        strokeWidth: 10,
+      },
+      {
+        tool: "brush",
+        label: "Leaf",
+        points: [
+          centerX + 28,
+          centerY + 150,
+          centerX - 12,
+          centerY + 168,
+          centerX + 14,
+          centerY + 186,
+        ],
+        stroke: "#2ca24f",
+        strokeWidth: 8,
+      },
+    ],
+  };
+}
+
+function buildHeartSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.38;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a heart with easel tools.",
+    actions: [
+      {
+        tool: "brush",
+        label: "Heart",
+        points: [
+          centerX,
+          centerY + 110,
+          centerX - 92,
+          centerY + 20,
+          centerX - 54,
+          centerY - 48,
+          centerX,
+          centerY - 2,
+          centerX + 54,
+          centerY - 48,
+          centerX + 92,
+          centerY + 20,
+          centerX,
+          centerY + 110,
+        ],
+        stroke: "#ff5fb2",
+        strokeWidth: 10,
+      },
+    ],
+  };
+}
+
+function buildSunSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a sun with easel tools.",
+    actions: [
+      {
+        tool: "ellipse",
+        label: "Sun",
+        x: centerX - 54,
+        y: centerY - 54,
+        width: 108,
+        height: 108,
+        stroke: "#ffb200",
+        fill: "rgba(255,214,82,0.55)",
+        strokeWidth: 5,
+      },
+      {
+        tool: "brush",
+        label: "Rays",
+        points: [
+          centerX,
+          centerY - 92,
+          centerX,
+          centerY - 132,
+          centerX + 62,
+          centerY - 62,
+          centerX + 90,
+          centerY - 90,
+          centerX + 92,
+          centerY,
+          centerX + 132,
+          centerY,
+          centerX + 62,
+          centerY + 62,
+          centerX + 90,
+          centerY + 90,
+          centerX,
+          centerY + 92,
+          centerX,
+          centerY + 132,
+          centerX - 62,
+          centerY + 62,
+          centerX - 90,
+          centerY + 90,
+          centerX - 92,
+          centerY,
+          centerX - 132,
+          centerY,
+          centerX - 62,
+          centerY - 62,
+          centerX - 90,
+          centerY - 90,
+        ],
+        stroke: "#ffb200",
+        strokeWidth: 6,
+      },
+    ],
+  };
+}
+
+function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAssistPlan {
+  const subject = extractSubjectLabel(input.prompt) || "Canvas note";
+  const boxWidth = clamp(Math.max(260, subject.length * 20 + 120), 260, Math.max(260, input.document.width - 80));
+  const x = clamp(input.document.width / 2 - boxWidth / 2, 24, Math.max(24, input.document.width - boxWidth - 24));
+  const y = clamp(input.document.height * 0.18, 24, Math.max(24, input.document.height - 220));
+
+  return {
+    mode: "canvas",
+    assistantMessage: "Translating the prompt into easel markup tools.",
+    actions: [
+      {
+        tool: "rect",
+        label: "Prompt box",
+        x,
+        y,
+        width: boxWidth,
+        height: 108,
+        stroke: "#ff8a5b",
+        fill: "rgba(255,241,196,0.58)",
+        strokeWidth: 4,
+      },
+      {
+        tool: "text",
+        label: "Prompt note",
+        text: subject,
+        x: x + 24,
+        y: y + 26,
+        width: boxWidth - 48,
+        fontSize: 36,
+        color: "#7a1f4f",
+      },
+      {
+        tool: "brush",
+        label: "Accent underline",
+        points: [
+          x + 22,
+          y + 86,
+          x + boxWidth * 0.42,
+          y + 90,
+          x + boxWidth * 0.78,
+          y + 84,
+          x + boxWidth - 22,
+          y + 88,
+        ],
+        stroke: "#ff5fb2",
+        strokeWidth: 7,
+      },
+    ],
+  };
+}
+
+function buildExplanationLayout(
+  document: EaselAssistInput["document"],
+  topic: string,
+  body: string
+): EditorAssistPlan {
+  const width = clamp(Math.min(document.width - 80, 760), 320, document.width - 40);
+  const x = clamp(document.width / 2 - width / 2, 20, Math.max(20, document.width - width - 20));
+  const title = `Explain: ${toTitleText(topic) || topic}`;
+  const bodyLines = splitCanvasText(body, 64);
+  const bodyHeight = Math.max(170, 36 + bodyLines.length * 38);
+  const y = clamp(document.height * 0.12, 24, Math.max(24, document.height - bodyHeight - 120));
+
+  return {
+    mode: "canvas",
+    assistantMessage: `Writing an explanation about ${topic}.`,
+    actions: [
+      {
+        tool: "rect",
+        label: "Explanation card",
+        x,
+        y,
+        width,
+        height: bodyHeight + 92,
+        stroke: "#ff8a5b",
+        fill: "rgba(255,248,220,0.78)",
+        strokeWidth: 4,
+      },
+      {
+        tool: "text",
+        label: "Explanation title",
+        text: title,
+        x: x + 24,
+        y: y + 22,
+        width: width - 48,
+        fontSize: 34,
+        color: "#7a1f4f",
+      },
+      {
+        tool: "brush",
+        label: "Title underline",
+        points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
+        stroke: "#ff5fb2",
+        strokeWidth: 6,
+      },
+      {
+        tool: "text",
+        label: "Explanation body",
+        text: bodyLines.join("\n"),
+        x: x + 24,
+        y: y + 92,
+        width: width - 48,
+        fontSize: 28,
+        color: "#5f2141",
+      },
+    ],
+  };
+}
+
 function extractRequestedText(prompt: string) {
   const quoted = prompt.match(/["“]([^"”]{1,80})["”]/);
   if (quoted?.[1]) {
@@ -316,6 +653,35 @@ function extractRequestedText(prompt: string) {
   }
 
   return null;
+}
+
+function extractExplanationTopic(prompt: string) {
+  const cleaned = cleanText(prompt, 1200);
+  const direct = cleaned.match(/^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\s+(.+)$/i);
+  if (direct?.[1]) {
+    return direct[1].replace(/[?.!]+$/g, "").trim();
+  }
+
+  const contains = cleaned.match(/(?:about|of)\s+(.+)$/i);
+  if (contains?.[1] && isExplanationPrompt(cleaned)) {
+    return contains[1].replace(/[?.!]+$/g, "").trim();
+  }
+
+  return null;
+}
+
+function isExplanationPrompt(prompt: string) {
+  return /^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\b/i.test(prompt.trim());
+}
+
+function extractSubjectLabel(prompt: string) {
+  const cleaned = cleanText(prompt, 90)
+    .replace(/^(draw|make|create|generate|sketch|paint|add|show)\s+/i, "")
+    .replace(/^(a|an|the)\s+/i, "")
+    .trim();
+  if (!cleaned) return null;
+  const shortened = cleaned.length > 48 ? `${cleaned.slice(0, 45).trim()}...` : cleaned;
+  return shortened.charAt(0).toUpperCase() + shortened.slice(1);
 }
 
 function normalizeAssistPlan(value: unknown, document: EaselAssistInput["document"]): EditorAssistPlan | null {
@@ -566,4 +932,39 @@ function clamp(value: number, min: number, max: number) {
 
 function round(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function buildDeterministicExplanation(topic: string) {
+  const normalized = toTitleText(topic) || topic;
+  if (/photosynthesis/i.test(topic)) {
+    return "Photosynthesis is the process plants use to make food from sunlight. They take in water from their roots and carbon dioxide from the air. Using light energy, they turn those ingredients into sugar for growth and release oxygen as a byproduct.";
+  }
+
+  return `${normalized} can be understood by breaking it into its main idea, the inputs it depends on, and the result it produces. Start with what it is, then explain how it works step by step, and finish with why it matters.`;
+}
+
+function cleanCanvasParagraph(value: string) {
+  return cleanText(String(value || "").replace(/\s*\n\s*/g, " "), 420);
+}
+
+function splitCanvasText(value: string, maxLineLength: number) {
+  const words = cleanCanvasParagraph(value).split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLineLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines.slice(0, 7);
 }
