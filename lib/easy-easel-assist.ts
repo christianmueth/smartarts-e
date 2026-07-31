@@ -29,6 +29,14 @@ type DoodleDecomposition = {
   parts: string[];
 };
 
+type DrawingBudget = {
+  complexity: "simple" | "standard" | "detailed" | "intricate";
+  recommendedActions: number;
+  recommendedBrushActions: number;
+  maxActions: number;
+  maxBrushActions: number;
+};
+
 type SketchStyle = {
   stroke: string;
   fill: string;
@@ -137,6 +145,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
 
 async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecomposition | null = null): Promise<EditorAssistPlan | null> {
   const wantsDoodle = isDoodlePrompt(input.prompt);
+  const drawingBudget = wantsDoodle ? determineDrawingBudget(input.prompt, decomposition) : null;
   const selectedLayer = input.selectedLayer
     ? {
         id: input.selectedLayer.id,
@@ -173,8 +182,8 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           "Convert the prompt into direct easel tool actions only.",
           "Always use mode=canvas.",
           "Use only text, rect, ellipse, arrow, brush, or eraser.",
-          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 12-48 actions.",
-          "Make drawings brush-led: use 8-36 brush actions for an outer contour, major structural features, repeated components, interior details, hatching, shadows, and highlights. Use rects or ellipses only as optional supporting parts.",
+          "When asked to draw, doodle, sketch, make, create, or paint something, decide the number of actions from the subject's visual complexity. Use only the strokes needed for a recognizable drawing; simple objects need fewer marks, while multi-part objects need more structure and detail.",
+          "Make drawings brush-led with an outer contour, major structural features, repeated components when present, and only the hatching, shadows, and highlights that help recognition. Never exceed 48 actions or 36 brush actions. Use rects or ellipses only as optional supporting parts.",
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
           "Decompose unfamiliar objects into named parts: silhouette, major supports, repeated parts such as wheels or windows, and small identifying details before drawing.",
@@ -192,6 +201,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           prompt: input.prompt,
           document: input.document,
           decomposition,
+          drawingBudget,
           selectedLayer,
           layers,
         }),
@@ -218,7 +228,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
 
   const parsed = safeJsonParse(result.content);
   const plan = normalizeAssistPlan(parsed, input.document);
-  if (wantsDoodle && !isUsableDoodlePlan(plan, decomposition)) {
+  if (wantsDoodle && !isUsableDoodlePlan(plan, decomposition, drawingBudget)) {
     return null;
   }
   return plan;
@@ -495,7 +505,7 @@ async function generateDoodleDecomposition(prompt: string): Promise<DoodleDecomp
     additionalProperties: false,
     properties: {
       subject: { type: "string" },
-      parts: { type: "array", items: { type: "string" }, minItems: 4, maxItems: 6 },
+      parts: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 12 },
     },
     required: ["subject", "parts"],
   } as const;
@@ -506,7 +516,7 @@ async function generateDoodleDecomposition(prompt: string): Promise<DoodleDecomp
         content: [
           "You are planning a simple, recognizable Easel doodle.",
           "Return JSON only.",
-          "Identify the main visible object and list 4-6 concrete, drawable physical parts in drawing order.",
+          "Identify the main visible object and list only the concrete, drawable physical parts needed to make it recognizable, in drawing order. Use fewer parts for simple objects and more parts for complex ones, up to 12.",
           "Use short singular noun phrases such as 'front wheel', 'frame', 'handlebar', 'window row', or 'roof'.",
           "Parts must make this specific object recognizable; never return generic terms like detail, accent, doodle, shape, or decoration.",
           "Do not include text labels or instructions.",
@@ -1366,10 +1376,30 @@ function isDoodlePrompt(prompt: string) {
   return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
 }
 
-function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null) {
-  if (!plan || plan.actions.length < 12 || plan.actions.length > 48) return false;
+function determineDrawingBudget(prompt: string, decomposition: DoodleDecomposition | null): DrawingBudget {
+  const lower = prompt.toLowerCase();
+  const requestedDetail = /\b(?:detailed|elaborate|intricate|realistic|complex|technical|architectural|diagram|many|multiple|crowd|city|landscape)\b/.test(lower);
+  const repeatedParts = /\b(?:wheels?|windows?|petals?|leaves|buildings?|people|trees|gears?|spokes?|panels?|levels?|stories)\b/.test(lower);
+  const partCount = decomposition?.parts.length || 0;
+  const wordCount = lower.split(/\s+/).filter(Boolean).length;
+  const score = (requestedDetail ? 3 : 0) + (repeatedParts ? 2 : 0) + Math.max(0, partCount - 2) + (wordCount > 10 ? 1 : 0);
+
+  if (score >= 8) {
+    return { complexity: "intricate", recommendedActions: 34, recommendedBrushActions: 26, maxActions: 48, maxBrushActions: 36 };
+  }
+  if (score >= 5) {
+    return { complexity: "detailed", recommendedActions: 24, recommendedBrushActions: 18, maxActions: 38, maxBrushActions: 28 };
+  }
+  if (score >= 2) {
+    return { complexity: "standard", recommendedActions: 14, recommendedBrushActions: 10, maxActions: 26, maxBrushActions: 20 };
+  }
+  return { complexity: "simple", recommendedActions: 6, recommendedBrushActions: 4, maxActions: 14, maxBrushActions: 10 };
+}
+
+function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null, budget: DrawingBudget | null) {
+  if (!plan || plan.actions.length > (budget?.maxActions || 48)) return false;
   const brushActions = plan.actions.filter((action) => action.tool === "brush");
-  if (brushActions.length < 8 || brushActions.length > 36) return false;
+  if (brushActions.length > (budget?.maxBrushActions || 36)) return false;
   if (!brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8)) return false;
   if (!decomposition) return true;
   const labels = plan.actions.map((action) => String(action.label || "").toLowerCase());
@@ -1383,10 +1413,10 @@ function normalizeDoodleDecomposition(value: unknown): DoodleDecomposition | nul
   const record = asRecord(value);
   const subject = cleanText(record.subject, 80);
   const parts = Array.isArray(record.parts)
-    ? Array.from(new Set(record.parts.map((part) => cleanText(part, 48)).filter(Boolean))).slice(0, 6)
+    ? Array.from(new Set(record.parts.map((part) => cleanText(part, 48)).filter(Boolean))).slice(0, 12)
     : [];
   const hasGenericPart = parts.some((part) => /^(?:detail|accent|doodle|shape|decoration|object|part)$/i.test(part));
-  if (!subject || parts.length < 4 || hasGenericPart) return null;
+  if (!subject || !parts.length || hasGenericPart) return null;
   return { subject, parts };
 }
 
