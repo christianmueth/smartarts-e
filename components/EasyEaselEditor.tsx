@@ -2148,6 +2148,22 @@ function buildLocalCanvasFallbackPlan(
     };
   }
 
+  if (/\b(building|skyscraper|office|tower|apartment)\b/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Doodling a building with easel tools.",
+      actions: buildBuildingAssistActions(document),
+    };
+  }
+
+  if (/\b(motorcycle|motorbike|bike)\b/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Doodling a motorcycle with easel tools.",
+      actions: buildMotorcycleAssistActions(document),
+    };
+  }
+
   if (selectedLayer && /(highlight|box|outline|frame)/.test(lower)) {
     return {
       mode: "canvas",
@@ -2471,6 +2487,45 @@ function buildCarAssistActions(document: EditorCanvasDocument): EditorAssistActi
     { tool: "ellipse", label: "Right wheel", x: rightWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: "#3d4655", fill: "rgba(61,70,85,0.3)", strokeWidth: 5 },
     { tool: "ellipse", label: "Left hub", x: leftWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
     { tool: "ellipse", label: "Right hub", x: rightWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
+  ];
+}
+
+function buildBuildingAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.3;
+  const width = 210;
+  const height = 270;
+  const x = centerX - width / 2;
+  const y = centerY;
+  return [
+    { tool: "rect", label: "Building facade", x, y, width, height, stroke: "#4d8cff", fill: "rgba(137,180,255,0.24)", strokeWidth: 5 },
+    { tool: "brush", label: "Roof line", points: [x - 12, y, centerX, y - 34, x + width + 12, y], stroke: "#ffb200", strokeWidth: 6 },
+    { tool: "brush", label: "Building side", points: [x + width, y, x + width + 26, y + 24, x + width + 26, y + height + 12, x + width, y + height], stroke: "#2ca24f", strokeWidth: 5 },
+    { tool: "rect", label: "Door", x: centerX - 25, y: y + 181, width: 50, height: 89, stroke: "#2ca24f", fill: "rgba(44,162,79,0.14)", strokeWidth: 3 },
+    { tool: "rect", label: "Window 1", x: x + 34, y: y + 51, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
+    { tool: "rect", label: "Window 2", x: x + 134, y: y + 51, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
+    { tool: "rect", label: "Window 3", x: x + 34, y: y + 116, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
+    { tool: "rect", label: "Window 4", x: x + 134, y: y + 116, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
+    { tool: "brush", label: "Ground line", points: [x - 36, y + height + 14, centerX, y + height + 20, x + width + 46, y + height + 14], stroke: "#2ca24f", strokeWidth: 4 },
+  ];
+}
+
+function buildMotorcycleAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.45;
+  const wheel = 62;
+  const leftWheelX = centerX - 122;
+  const rightWheelX = centerX + 60;
+  const wheelY = centerY + 60;
+  return [
+    { tool: "ellipse", label: "Rear wheel", x: leftWheelX, y: wheelY, width: wheel, height: wheel, stroke: "#3d4655", fill: "rgba(61,70,85,0.2)", strokeWidth: 6 },
+    { tool: "ellipse", label: "Front wheel", x: rightWheelX, y: wheelY, width: wheel, height: wheel, stroke: "#3d4655", fill: "rgba(61,70,85,0.2)", strokeWidth: 6 },
+    { tool: "brush", label: "Frame", points: [leftWheelX + 31, wheelY + 31, centerX - 22, centerY + 32, centerX + 38, centerY + 70, rightWheelX + 31, wheelY + 31], stroke: "#e84a5f", strokeWidth: 7 },
+    { tool: "brush", label: "Fuel tank", points: [centerX - 26, centerY + 34, centerX - 2, centerY - 10, centerX + 58, centerY + 8, centerX + 38, centerY + 70], stroke: "#e84a5f", strokeWidth: 6 },
+    { tool: "brush", label: "Seat", points: [centerX - 74, centerY + 8, centerX - 12, centerY + 2, centerX + 4, centerY + 20, centerX - 58, centerY + 28], stroke: "#ffb200", strokeWidth: 6 },
+    { tool: "brush", label: "Fork and handlebar", points: [rightWheelX + 31, wheelY + 31, centerX + 82, centerY + 10, centerX + 106, centerY - 34, centerX + 72, centerY - 38], stroke: "#2ca24f", strokeWidth: 5 },
+    { tool: "brush", label: "Exhaust", points: [centerX - 52, centerY + 48, centerX - 92, centerY + 76, leftWheelX + 19, wheelY + 42], stroke: "#ffb200", strokeWidth: 5 },
+    { tool: "ellipse", label: "Headlight", x: centerX + 90, y: centerY - 44, width: 22, height: 22, stroke: "#ffb200", fill: "rgba(255,178,0,0.45)", strokeWidth: 3 },
   ];
 }
 

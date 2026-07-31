@@ -167,6 +167,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
           "Make drawings brush-led: include at least 3 brush actions for an outer contour, a major structural feature, and interior details. Use rects or ellipses only as optional supporting parts.",
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
+          "Decompose unfamiliar objects into named parts: silhouette, major supports, repeated parts such as wheels or windows, and small identifying details before drawing.",
           "Compose the object around the center of the document, preserve recognizable proportions, and keep all marks inside the canvas.",
           "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
@@ -946,6 +947,56 @@ function buildCarSketchPlan(input: EaselAssistInput, style: SketchStyle): Editor
       { tool: "ellipse", label: "Right wheel", x: rightWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: style.secondary, fill: withAlpha(style.secondary, 0.3), strokeWidth: Math.max(4, style.strokeWidth) },
       { tool: "ellipse", label: "Left hub", x: leftWheelX + wheelSize * 0.32, y: wheelY + wheelSize * 0.32, width: wheelSize * 0.36, height: wheelSize * 0.36, stroke: style.accent, fill: withAlpha(style.accent, 0.45), strokeWidth: 2 },
       { tool: "ellipse", label: "Right hub", x: rightWheelX + wheelSize * 0.32, y: wheelY + wheelSize * 0.32, width: wheelSize * 0.36, height: wheelSize * 0.36, stroke: style.accent, fill: withAlpha(style.accent, 0.45), strokeWidth: 2 },
+    ],
+  };
+}
+
+function buildBuildingSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.3;
+  const width = 210 * style.scale * style.stretchX;
+  const height = 270 * style.scale * style.stretchY;
+  const x = centerX - width / 2;
+  const y = centerY;
+  const windowWidth = width * 0.18;
+  const windowHeight = height * 0.13;
+  return {
+    mode: "canvas",
+    assistantMessage: "Doodling a building with easel tools.",
+    actions: [
+      { tool: "rect", label: "Building facade", x, y, width, height, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Roof line", points: [x - 12 * style.scale, y, centerX, y - 34 * style.scale, x + width + 12 * style.scale, y], stroke: style.accent, strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "brush", label: "Building side", points: [x + width, y, x + width + 26 * style.scale, y + 24 * style.scale, x + width + 26 * style.scale, y + height + 12 * style.scale, x + width, y + height], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "rect", label: "Door", x: centerX - width * 0.12, y: y + height * 0.67, width: width * 0.24, height: height * 0.33, stroke: style.secondary, fill: withAlpha(style.secondary, 0.16), strokeWidth: 3 },
+      { tool: "rect", label: "Window 1", x: x + width * 0.16, y: y + height * 0.19, width: windowWidth, height: windowHeight, stroke: style.accent, fill: withAlpha(style.accent, 0.18), strokeWidth: 3 },
+      { tool: "rect", label: "Window 2", x: x + width * 0.64, y: y + height * 0.19, width: windowWidth, height: windowHeight, stroke: style.accent, fill: withAlpha(style.accent, 0.18), strokeWidth: 3 },
+      { tool: "rect", label: "Window 3", x: x + width * 0.16, y: y + height * 0.43, width: windowWidth, height: windowHeight, stroke: style.accent, fill: withAlpha(style.accent, 0.18), strokeWidth: 3 },
+      { tool: "rect", label: "Window 4", x: x + width * 0.64, y: y + height * 0.43, width: windowWidth, height: windowHeight, stroke: style.accent, fill: withAlpha(style.accent, 0.18), strokeWidth: 3 },
+      { tool: "brush", label: "Ground line", points: [x - 36 * style.scale, y + height + 14 * style.scale, centerX, y + height + 20 * style.scale, x + width + 46 * style.scale, y + height + 14 * style.scale], stroke: style.secondary, strokeWidth: 4 },
+    ],
+  };
+}
+
+function buildMotorcycleSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.45;
+  const scale = style.scale;
+  const wheel = 62 * scale;
+  const leftWheelX = centerX - 122 * scale;
+  const rightWheelX = centerX + 60 * scale;
+  const wheelY = centerY + 60 * scale;
+  return {
+    mode: "canvas",
+    assistantMessage: "Doodling a motorcycle with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Rear wheel", x: leftWheelX, y: wheelY, width: wheel, height: wheel, stroke: style.secondary, fill: withAlpha(style.secondary, 0.2), strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "ellipse", label: "Front wheel", x: rightWheelX, y: wheelY, width: wheel, height: wheel, stroke: style.secondary, fill: withAlpha(style.secondary, 0.2), strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "brush", label: "Frame", points: [leftWheelX + wheel * 0.5, wheelY + wheel * 0.5, centerX - 22 * scale, centerY + 32 * scale, centerX + 38 * scale, centerY + 70 * scale, rightWheelX + wheel * 0.5, wheelY + wheel * 0.5], stroke: style.stroke, strokeWidth: Math.max(6, style.strokeWidth + 1) },
+      { tool: "brush", label: "Fuel tank", points: [centerX - 26 * scale, centerY + 34 * scale, centerX - 2 * scale, centerY - 10 * scale, centerX + 58 * scale, centerY + 8 * scale, centerX + 38 * scale, centerY + 70 * scale], stroke: style.stroke, strokeWidth: Math.max(6, style.strokeWidth) },
+      { tool: "brush", label: "Seat", points: [centerX - 74 * scale, centerY + 8 * scale, centerX - 12 * scale, centerY + 2 * scale, centerX + 4 * scale, centerY + 20 * scale, centerX - 58 * scale, centerY + 28 * scale], stroke: style.accent, strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "brush", label: "Fork and handlebar", points: [rightWheelX + wheel * 0.5, wheelY + wheel * 0.5, centerX + 82 * scale, centerY + 10 * scale, centerX + 106 * scale, centerY - 34 * scale, centerX + 72 * scale, centerY - 38 * scale], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "brush", label: "Exhaust", points: [centerX - 52 * scale, centerY + 48 * scale, centerX - 92 * scale, centerY + 76 * scale, leftWheelX + wheel * 0.3, wheelY + wheel * 0.68], stroke: style.accent, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Headlight", x: centerX + 90 * scale, y: centerY - 44 * scale, width: 22 * scale, height: 22 * scale, stroke: style.accent, fill: withAlpha(style.accent, 0.45), strokeWidth: 3 },
     ],
   };
 }
@@ -1767,4 +1818,6 @@ const SKETCH_LEXICON: SketchLexiconEntry[] = [
   { nouns: ["flag", "banner", "pennant"], build: buildFlagSketchPlan, message: "flag" },
   { nouns: ["rocket", "spaceship"], build: buildRocketSketchPlan, message: "rocket" },
   { nouns: ["car", "automobile", "vehicle", "sedan"], build: buildCarSketchPlan, message: "car" },
+  { nouns: ["building", "skyscraper", "office", "tower", "apartment"], build: buildBuildingSketchPlan, message: "building" },
+  { nouns: ["motorcycle", "motorbike", "bike"], build: buildMotorcycleSketchPlan, message: "motorcycle" },
 ];
