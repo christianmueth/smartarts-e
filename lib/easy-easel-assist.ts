@@ -173,8 +173,8 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           "Convert the prompt into direct easel tool actions only.",
           "Always use mode=canvas.",
           "Use only text, rect, ellipse, arrow, brush, or eraser.",
-          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 6-12 actions.",
-          "Make drawings brush-led: include at least 3 brush actions for an outer contour, a major structural feature, and interior details. Use rects or ellipses only as optional supporting parts.",
+          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 12-48 actions.",
+          "Make drawings brush-led: use 8-36 brush actions for an outer contour, major structural features, repeated components, interior details, hatching, shadows, and highlights. Use rects or ellipses only as optional supporting parts.",
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
           "Decompose unfamiliar objects into named parts: silhouette, major supports, repeated parts such as wheels or windows, and small identifying details before drawing.",
@@ -1092,6 +1092,9 @@ function buildGenericDoodleFallbackPlan(input: EaselAssistInput): EditorAssistPl
       { tool: "brush", label: "Detail stroke 1", points: [centerX - size * 0.32, centerY + size * 0.18, centerX - size * 0.1, centerY + size * 0.02, centerX + size * 0.1, centerY + size * 0.16], stroke: accent, strokeWidth: 4 },
       { tool: "brush", label: "Detail stroke 2", points: [centerX - size * 0.02, centerY - size * 0.34, centerX + size * 0.12, centerY - size * 0.48, centerX + size * 0.28, centerY - size * 0.32], stroke: secondary, strokeWidth: 4 },
       { tool: "brush", label: "Hatching", points: [left + size * 0.22, bottom - size * 0.28, left + size * 0.42, bottom - size * 0.12, left + size * 0.34, bottom - size * 0.38, left + size * 0.56, bottom - size * 0.18, left + size * 0.5, bottom - size * 0.46, left + size * 0.72, bottom - size * 0.26], stroke: secondary, strokeWidth: 3 },
+      { tool: "brush", label: "Hatching accent", points: [centerX + size * 0.18, centerY + size * 0.14, centerX + size * 0.42, centerY + size * 0.32, centerX + size * 0.24, centerY + size * 0.28, centerX + size * 0.46, centerY + size * 0.46], stroke, strokeWidth: 3 },
+      { tool: "brush", label: "Contour accent", points: [left + size * 0.08, centerY + size * 0.4, centerX - size * 0.2, bottom - size * 0.04, centerX + size * 0.16, bottom - size * 0.08], stroke: accent, strokeWidth: 4 },
+      { tool: "brush", label: "Fine detail", points: [centerX - size * 0.1, centerY - size * 0.02, centerX + size * 0.04, centerY + size * 0.08, centerX - size * 0.02, centerY + size * 0.24], stroke: secondary, strokeWidth: 3 },
       { tool: "brush", label: "Highlight", points: [left + size * 0.14, top + size * 0.26, centerX - size * 0.06, top + size * 0.1, centerX + size * 0.12, top + size * 0.16], stroke: "#ffffff", strokeWidth: 4 },
       { tool: "brush", label: "Ground shadow", points: [left - size * 0.02, bottom + size * 0.08, centerX - size * 0.22, bottom + size * 0.14, centerX + size * 0.22, bottom + size * 0.1, right + size * 0.04, bottom + size * 0.14], stroke: secondary, strokeWidth: 5 },
     ],
@@ -1364,9 +1367,9 @@ function isDoodlePrompt(prompt: string) {
 }
 
 function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null) {
-  if (!plan || plan.actions.length < 6) return false;
+  if (!plan || plan.actions.length < 12 || plan.actions.length > 48) return false;
   const brushActions = plan.actions.filter((action) => action.tool === "brush");
-  if (brushActions.length < 3) return false;
+  if (brushActions.length < 8 || brushActions.length > 36) return false;
   if (!brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8)) return false;
   if (!decomposition) return true;
   const labels = plan.actions.map((action) => String(action.label || "").toLowerCase());
