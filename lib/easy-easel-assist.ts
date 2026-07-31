@@ -17,9 +17,8 @@ const easelAssistSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    mode: { type: "string", enum: ["canvas", "image"] },
+    mode: { type: "string", enum: ["canvas"] },
     assistantMessage: { type: "string" },
-    imagePrompt: { type: "string" },
     actions: {
       type: "array",
       items: {
@@ -62,12 +61,7 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return llmPlan;
   }
 
-  return {
-    mode: "image",
-    assistantMessage: "Creating an image layer for the easel.",
-    actions: [],
-    imagePrompt: prompt,
-  };
+  throw new Error("Easy Easel only supports canvas-tool actions here. Ask it to write text, highlight, circle, underline, point, brush, or erase on the easel.");
 }
 
 async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -104,12 +98,12 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
         role: "system",
         content: [
           "You are an Easy Easel canvas assistant.",
-          "Decide whether the prompt should be handled with direct canvas tools or with image generation.",
-          "Use mode=canvas when the user is asking to write text, annotate, box, circle, highlight, underline, point at, mark up, brush, or erase directly on the easel.",
-          "Use mode=image only when the user is asking for a new standalone image that cannot be reasonably created with text, rect, ellipse, arrow, brush, or eraser tools.",
-          "When using canvas mode, return 1-4 concrete actions using only text, rect, ellipse, arrow, brush, or eraser.",
+          "Convert the prompt into direct easel tool actions only.",
+          "Always use mode=canvas.",
+          "Return 1-4 concrete actions using only text, rect, ellipse, arrow, brush, or eraser.",
           "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
+          "If the request is too vague for a precise drawing, choose a minimal helpful markup action rather than switching modes.",
           "Do not return explanations outside the JSON schema.",
         ].join(" "),
       },
@@ -326,16 +320,15 @@ function extractRequestedText(prompt: string) {
 
 function normalizeAssistPlan(value: unknown, document: EaselAssistInput["document"]): EditorAssistPlan | null {
   const record = asRecord(value);
-  const mode = record.mode === "canvas" || record.mode === "image" ? record.mode : null;
+  const mode = record.mode === "canvas" ? record.mode : null;
   if (!mode) return null;
 
-  const assistantMessage = cleanText(record.assistantMessage, 200) || (mode === "canvas" ? "Applying easel tools." : "Creating an image layer.");
-  const imagePrompt = cleanText(record.imagePrompt, 1600) || undefined;
+  const assistantMessage = cleanText(record.assistantMessage, 200) || "Applying easel tools.";
   const actions = Array.isArray(record.actions)
     ? record.actions.map((action) => normalizeAction(action, document)).filter(Boolean) as EditorAssistAction[]
     : [];
 
-  if (mode === "canvas" && !actions.length) {
+  if (!actions.length) {
     return null;
   }
 
@@ -343,7 +336,6 @@ function normalizeAssistPlan(value: unknown, document: EaselAssistInput["documen
     mode,
     assistantMessage,
     actions,
-    ...(imagePrompt ? { imagePrompt } : {}),
   };
 }
 

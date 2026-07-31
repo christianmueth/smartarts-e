@@ -506,19 +506,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     return data.plan as EditorAssistPlan;
   }
 
-  async function requestGeneratedAssets(prompt: string) {
-    const response = await fetch("/api/images/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, count: 1 }),
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.ok || !Array.isArray(data?.assets)) {
-      throw new Error(data?.error || "Image generation failed.");
-    }
-    return data.assets as EditorAsset[];
-  }
-
   async function animateAssistantCursor(action: EditorAssistAction) {
     const points = cursorWaypointsForAction(action);
     if (!points.length) return;
@@ -586,17 +573,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     try {
       if (kind === "generate") {
         const plan = await requestEaselAssistPlan(trimmedPrompt);
-        if (plan.mode === "canvas" && plan.actions.length) {
-          await replayAssistActions(plan.actions);
-          setAiPrompt("");
-          toast.success(plan.assistantMessage || "Applied easel tools.", { id: toastId });
-          return;
-        }
-
-        const nextAssets = await requestGeneratedAssets(plan.imagePrompt || trimmedPrompt);
-        insertGeneratedAssets(nextAssets);
+        await replayAssistActions(plan.actions);
         setAiPrompt("");
-        toast.success(plan.assistantMessage || "Image added as a new layer.", { id: toastId });
+        toast.success(plan.assistantMessage || "Applied easel tools.", { id: toastId });
         return;
       }
 
@@ -1016,7 +995,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Write on the board, highlight something, underline a layer, erase a region, or ask for a new image."
+                    placeholder="Write on the board, highlight something, circle a layer, point at an object, brush a mark, or erase a region."
                     className="min-h-[150px] w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -1031,7 +1010,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     </button>
                   </div>
                   <p className="text-xs leading-6 text-pink-500">
-                    Prompts can write text, draw highlights, add rectangles, brush marks, or erase directly on the easel. If the request needs a brand-new image, it will still come back as a new layer.
+                    Prompts here only use easel tools. Ask it to write text, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
                   </p>
                 </div>
               </details>

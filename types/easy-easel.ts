@@ -117,10 +117,9 @@ export type EditorAssistAction = {
 };
 
 export type EditorAssistPlan = {
-  mode: "canvas" | "image";
+  mode: "canvas";
   assistantMessage: string;
   actions: EditorAssistAction[];
-  imagePrompt?: string;
 };
 
 export function createEmptyEditorDocument(): EditorCanvasDocument {
