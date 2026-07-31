@@ -951,7 +951,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         lastLayerId = layer.id;
       }
 
-      if ((index + 1) % 8 === 0 || index === initialSession.actions.length - 1) {
+      const isBackgroundReplay = document.hidden;
+      const batchSize = isBackgroundReplay ? 128 : 8;
+      if ((index + 1) % batchSize === 0 || index === initialSession.actions.length - 1) {
         const completedActionCount = index + 1;
         workingDocument = {
           ...workingDocument,
@@ -963,7 +965,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         setDocument(workingDocument);
         setSelectedLayerIds(lastLayerId ? [lastLayerId] : []);
         setSelectedLayerId(lastLayerId);
-        await wait(12);
+        if (!isBackgroundReplay) {
+          await wait(12);
+        }
       }
     }
 
