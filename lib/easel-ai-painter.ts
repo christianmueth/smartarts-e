@@ -107,7 +107,7 @@ function appendPass(
 }
 
 function getSampling(detailLevel: EditorPaintDetailLevel, width: number, height: number) {
-  const cellSize = detailLevel === "study" ? 28 : detailLevel === "refined" ? 18 : 8;
+  const cellSize = detailLevel === "study" ? 28 : detailLevel === "refined" ? 12 : 8;
   return {
     columns: Math.max(1, Math.ceil(width / cellSize)),
     rows: Math.max(1, Math.ceil(height / cellSize)),

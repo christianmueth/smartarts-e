@@ -1750,9 +1750,10 @@ function renderLayer(input: {
   }
 
   if (input.layer.kind === "rect") {
+    const isPaintTile = /^Underpainting region\b/i.test(input.layer.name);
     return (
       <Group {...commonProps}>
-        <Rect width={input.layer.width} height={input.layer.height} fill={input.layer.fill} stroke={input.layer.stroke} strokeWidth={input.layer.strokeWidth} cornerRadius={18} />
+        <Rect width={input.layer.width} height={input.layer.height} fill={input.layer.fill} stroke={input.layer.stroke} strokeWidth={input.layer.strokeWidth} cornerRadius={isPaintTile ? 0 : 18} />
       </Group>
     );
   }
