@@ -1249,8 +1249,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                 <div style={{ width: canvasWidth, height: canvasHeight }}>
                 <Stage
                   ref={stageRef}
-                  width={document.width}
-                  height={document.height}
+                  width={canvasWidth}
+                  height={canvasHeight}
                   scaleX={zoom}
                   scaleY={zoom}
                   onMouseDown={handleStageMouseDown}
@@ -1656,9 +1656,15 @@ function getStageDataUrl(stage: Konva.Stage | null, mimeType: string, zoom: numb
   if (!stage) return null;
   const previousScaleX = stage.scaleX();
   const previousScaleY = stage.scaleY();
+  const previousWidth = stage.width();
+  const previousHeight = stage.height();
+  const documentWidth = Math.round(previousWidth / (previousScaleX || zoom || 1));
+  const documentHeight = Math.round(previousHeight / (previousScaleY || zoom || 1));
+  stage.size({ width: documentWidth, height: documentHeight });
   stage.scale({ x: 1, y: 1 });
   stage.batchDraw();
   const dataUrl = stage.toDataURL({ pixelRatio: 2, mimeType });
+  stage.size({ width: previousWidth, height: previousHeight });
   stage.scale({ x: previousScaleX || zoom, y: previousScaleY || zoom });
   stage.batchDraw();
   return dataUrl;
