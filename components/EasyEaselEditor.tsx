@@ -439,6 +439,20 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     };
   }
 
+  function buildAssistLayerCandidates(): EditorAssistSelectedLayer[] {
+    return [...documentRef.current.layers]
+      .reverse()
+      .map((layer) => ({
+        id: layer.id,
+        kind: layer.kind,
+        name: layer.name,
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+      }));
+  }
+
   function insertGeneratedAssets(nextAssets: EditorAsset[]) {
     setAssets((current) => [...nextAssets, ...current.filter((asset) => !nextAssets.some((item) => item.id === asset.id))]);
     nextAssets.forEach((asset, index) => {
@@ -481,6 +495,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
           backgroundColor: documentRef.current.backgroundColor,
           layerCount: documentRef.current.layers.length,
         },
+        layers: buildAssistLayerCandidates(),
         selectedLayer: buildSelectedLayerForAssist(),
       }),
     });
@@ -526,6 +541,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     for (const action of actions) {
       setTool(action.tool === "brush" || action.tool === "eraser" || action.tool === "rect" || action.tool === "text"
         ? action.tool
+        : action.tool === "ellipse"
+          ? "ellipse"
         : "select");
       await animateAssistantCursor(action);
 
@@ -1277,11 +1294,11 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
     };
   }
 
-  if (action.tool === "rect") {
+  if (action.tool === "rect" || action.tool === "ellipse") {
     return {
-      id: createId("rect"),
-      kind: "rect",
-      name: action.label || "Rectangle",
+      id: createId(action.tool),
+      kind: action.tool,
+      name: action.label || (action.tool === "ellipse" ? "Ellipse" : "Rectangle"),
       x: Number(action.x || 0),
       y: Number(action.y || 0),
       width: Math.max(8, Math.round(Number(action.width || 220))),
@@ -1294,15 +1311,15 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
     };
   }
 
-  if (action.tool === "brush" || action.tool === "eraser") {
+  if (action.tool === "brush" || action.tool === "eraser" || action.tool === "arrow") {
     const points = Array.isArray(action.points)
       ? action.points.map((point) => Number(point)).filter((point) => Number.isFinite(point))
       : [];
     if (points.length < 4) return null;
     return {
-      id: createId(action.tool === "eraser" ? "erase" : "brush"),
+      id: createId(action.tool === "eraser" ? "erase" : action.tool === "arrow" ? "arrow" : "brush"),
       kind: "line",
-      name: action.label || (action.tool === "eraser" ? "Erase" : "Brush stroke"),
+      name: action.label || (action.tool === "eraser" ? "Erase" : action.tool === "arrow" ? "Arrow" : "Brush stroke"),
       x: 0,
       y: 0,
       width: document.width,
@@ -1311,7 +1328,7 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
       opacity: 1,
       points,
       stroke: action.tool === "eraser" ? "#ffffff" : String(action.stroke || "#ff8a5b"),
-      strokeWidth: Math.max(2, Math.round(Number(action.strokeWidth || (action.tool === "eraser" ? 24 : 8)))),
+      strokeWidth: Math.max(2, Math.round(Number(action.strokeWidth || (action.tool === "eraser" ? 24 : action.tool === "arrow" ? 8 : 8)))),
       compositeMode: action.tool === "eraser" ? "destination-out" : "source-over",
     };
   }
@@ -1337,6 +1354,17 @@ function cursorWaypointsForAction(action: EditorAssistAction) {
     return [
       { x, y },
       { x: x + width / 2, y: y + height / 2 },
+    ];
+  }
+
+  if (action.tool === "ellipse") {
+    const x = Number(action.x || 0);
+    const y = Number(action.y || 0);
+    const width = Number(action.width || 0);
+    const height = Number(action.height || 0);
+    return [
+      { x: x + width / 2, y: y + height / 2 },
+      { x: x + width, y: y + height / 2 },
     ];
   }
 

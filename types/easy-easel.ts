@@ -2,7 +2,7 @@ export type EditorAssetType = "upload" | "generated" | "edited";
 
 export type EditorLayerKind = "image" | "text" | "rect" | "ellipse" | "line";
 
-export type EditorAssistTool = "text" | "rect" | "brush" | "eraser";
+export type EditorAssistTool = "text" | "rect" | "ellipse" | "brush" | "eraser" | "arrow";
 
 export type EditorBaseLayer = {
   id: string;
@@ -97,6 +97,8 @@ export type EditorAssistSelectedLayer = {
   width: number;
   height: number;
 };
+
+export type EditorAssistLayerCandidate = EditorAssistSelectedLayer;
 
 export type EditorAssistAction = {
   tool: EditorAssistTool;

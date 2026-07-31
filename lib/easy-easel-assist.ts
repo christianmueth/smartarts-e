@@ -1,5 +1,5 @@
 import { callLLMResult } from "@/lib/aiClient";
-import type { EditorAssistAction, EditorAssistPlan, EditorAssistSelectedLayer } from "@/types/easy-easel";
+import type { EditorAssistAction, EditorAssistLayerCandidate, EditorAssistPlan, EditorAssistSelectedLayer } from "@/types/easy-easel";
 
 type EaselAssistInput = {
   prompt: string;
@@ -9,6 +9,7 @@ type EaselAssistInput = {
     backgroundColor: string;
     layerCount: number;
   };
+  layers?: EditorAssistLayerCandidate[];
   selectedLayer?: EditorAssistSelectedLayer | null;
 };
 
@@ -25,7 +26,7 @@ const easelAssistSchema = {
         type: "object",
         additionalProperties: false,
         properties: {
-          tool: { type: "string", enum: ["text", "rect", "brush", "eraser"] },
+          tool: { type: "string", enum: ["text", "rect", "ellipse", "brush", "eraser", "arrow"] },
           label: { type: "string" },
           text: { type: "string" },
           x: { type: "number" },
@@ -83,6 +84,19 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
         },
       }
     : null;
+  const layers = Array.isArray(input.layers)
+    ? input.layers.slice(0, 24).map((layer) => ({
+        id: layer.id,
+        kind: layer.kind,
+        name: layer.name,
+        bounds: {
+          x: round(layer.x),
+          y: round(layer.y),
+          width: round(layer.width),
+          height: round(layer.height),
+        },
+      }))
+    : [];
 
   const result = await callLLMResult(
     [
@@ -91,10 +105,10 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
         content: [
           "You are an Easy Easel canvas assistant.",
           "Decide whether the prompt should be handled with direct canvas tools or with image generation.",
-          "Use mode=canvas when the user is asking to write text, annotate, box, highlight, underline, mark up, brush, or erase directly on the easel.",
-          "Use mode=image only when the user is asking for a new standalone image that cannot be reasonably created with text, rect, brush, or eraser tools.",
-          "When using canvas mode, return 1-4 concrete actions using only text, rect, brush, or eraser.",
-          "If the user references an existing item like 'my flower', use the selected layer bounds when present.",
+          "Use mode=canvas when the user is asking to write text, annotate, box, circle, highlight, underline, point at, mark up, brush, or erase directly on the easel.",
+          "Use mode=image only when the user is asking for a new standalone image that cannot be reasonably created with text, rect, ellipse, arrow, brush, or eraser tools.",
+          "When using canvas mode, return 1-4 concrete actions using only text, rect, ellipse, arrow, brush, or eraser.",
+          "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
           "Do not return explanations outside the JSON schema.",
         ].join(" "),
@@ -105,6 +119,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
           prompt: input.prompt,
           document: input.document,
           selectedLayer,
+          layers,
         }),
       },
     ],
@@ -133,9 +148,10 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
 
 function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | null {
   const lower = input.prompt.toLowerCase();
-  const target = getTargetBounds(input.document, input.selectedLayer);
+  const targetLayer = resolveTargetLayer(input);
+  const target = getTargetBounds(input.document, targetLayer);
 
-  if (/(highlight|box|outline|frame)/.test(lower) && input.selectedLayer) {
+  if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
     return {
       mode: "canvas",
       assistantMessage: "Highlighting the selected element on the easel.",
@@ -155,7 +171,47 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
     };
   }
 
-  if (/(underline).*(rectangle|rect|box)|(?:rectangle|rect|box).*(underline)/.test(lower) && input.selectedLayer) {
+  if (/(circle|oval|ring around|encircle)/.test(lower) && targetLayer) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Circling the target on the easel.",
+      actions: [
+        {
+          tool: "ellipse",
+          label: "Circle",
+          x: target.x,
+          y: target.y,
+          width: target.width,
+          height: target.height,
+          stroke: "#ff5fb2",
+          fill: "rgba(255,95,178,0.08)",
+          strokeWidth: 5,
+        },
+      ],
+    };
+  }
+
+  if (/(arrow|point to|point at|call out)/.test(lower) && targetLayer) {
+    const centerX = target.x + target.width / 2;
+    const centerY = target.y + target.height / 2;
+    const startX = clamp(target.x - Math.max(80, target.width * 0.3), 0, input.document.width);
+    const startY = clamp(target.y - Math.max(60, target.height * 0.25), 0, input.document.height);
+    return {
+      mode: "canvas",
+      assistantMessage: "Pointing to the target on the easel.",
+      actions: [
+        {
+          tool: "arrow",
+          label: "Arrow",
+          points: buildArrowPoints(startX, startY, centerX, centerY),
+          stroke: "#ff8a5b",
+          strokeWidth: 8,
+        },
+      ],
+    };
+  }
+
+  if (/(underline).*(rectangle|rect|box)|(?:rectangle|rect|box).*(underline)/.test(lower) && targetLayer) {
     return {
       mode: "canvas",
       assistantMessage: "Adding a rectangular underline on the easel.",
@@ -175,7 +231,7 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
     };
   }
 
-  if (/(underline|brush|stroke|mark beneath|line under)/.test(lower) && input.selectedLayer) {
+  if (/(underline|brush|stroke|mark beneath|line under)/.test(lower) && targetLayer) {
     const y = clamp(target.y + target.height + 18, 0, input.document.height);
     return {
       mode: "canvas",
@@ -201,7 +257,7 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
     };
   }
 
-  if (/(erase|remove|clear)/.test(lower) && input.selectedLayer) {
+  if (/(erase|remove|clear)/.test(lower) && targetLayer) {
     const centerY = target.y + target.height / 2;
     return {
       mode: "canvas",
@@ -238,7 +294,7 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
           label: "Text",
           text: requestedText,
           x: clamp(input.document.width / 2 - width / 2, 30, Math.max(30, input.document.width - width - 30)),
-          y: clamp(input.selectedLayer ? target.y - 72 : input.document.height * 0.18, 24, Math.max(24, input.document.height - 120)),
+          y: clamp(targetLayer ? target.y - 72 : input.document.height * 0.18, 24, Math.max(24, input.document.height - 120)),
           width,
           fontSize: 42,
           color: "#7a1f4f",
@@ -294,7 +350,7 @@ function normalizeAssistPlan(value: unknown, document: EaselAssistInput["documen
 function normalizeAction(value: unknown, document: EaselAssistInput["document"]): EditorAssistAction | null {
   const record = asRecord(value);
   const tool = record.tool;
-  if (tool !== "text" && tool !== "rect" && tool !== "brush" && tool !== "eraser") {
+  if (tool !== "text" && tool !== "rect" && tool !== "ellipse" && tool !== "brush" && tool !== "eraser" && tool !== "arrow") {
     return null;
   }
 
@@ -314,12 +370,12 @@ function normalizeAction(value: unknown, document: EaselAssistInput["document"])
     };
   }
 
-  if (tool === "rect") {
+  if (tool === "rect" || tool === "ellipse") {
     const width = clamp(asNumber(record.width, 220), 20, document.width);
     const height = clamp(asNumber(record.height, 120), 8, document.height);
     return {
       tool,
-      label: cleanText(record.label, 80) || "Rectangle",
+      label: cleanText(record.label, 80) || (tool === "ellipse" ? "Ellipse" : "Rectangle"),
       x: clamp(asNumber(record.x, document.width / 2 - width / 2), 0, Math.max(0, document.width - width)),
       y: clamp(asNumber(record.y, document.height / 2 - height / 2), 0, Math.max(0, document.height - height)),
       width,
@@ -335,12 +391,114 @@ function normalizeAction(value: unknown, document: EaselAssistInput["document"])
 
   return {
     tool,
-    label: cleanText(record.label, 80) || (tool === "eraser" ? "Erase" : "Brush"),
-    points,
-    stroke: tool === "eraser" ? "#ffffff" : cleanColor(record.stroke, "#ff8a5b"),
-    strokeWidth: clamp(asNumber(record.strokeWidth, tool === "eraser" ? 24 : 8), 2, 80),
+    label: cleanText(record.label, 80) || (tool === "eraser" ? "Erase" : tool === "arrow" ? "Arrow" : "Brush"),
+    points: tool === "arrow" && points.length >= 4 ? buildArrowPoints(points[0], points[1], points[points.length - 2], points[points.length - 1]) : points,
+    stroke: tool === "eraser" ? "#ffffff" : cleanColor(record.stroke, tool === "arrow" ? "#ff8a5b" : "#ff8a5b"),
+    strokeWidth: clamp(asNumber(record.strokeWidth, tool === "eraser" ? 24 : tool === "arrow" ? 8 : 8), 2, 80),
   };
 }
+
+function resolveTargetLayer(input: EaselAssistInput) {
+  const layers = Array.isArray(input.layers) ? input.layers : [];
+  const prompt = input.prompt.toLowerCase();
+  if (input.selectedLayer && /(selected|this|that|current|my)/.test(prompt)) {
+    return input.selectedLayer;
+  }
+
+  const ordinal = readOrdinalIndex(prompt);
+  const filteredByName = filterLayersByPrompt(layers, prompt);
+  if (ordinal !== null) {
+    const ordered = filteredByName.length ? filteredByName : layers;
+    const candidate = ordered[ordinal] || null;
+    if (candidate) return candidate;
+  }
+
+  if (filteredByName.length) {
+    return filteredByName[0];
+  }
+
+  if (/\b(last|latest|top)\b/.test(prompt)) {
+    return layers[0] || input.selectedLayer || null;
+  }
+
+  if (/\b(first|bottom|earliest)\b/.test(prompt)) {
+    return layers[layers.length - 1] || input.selectedLayer || null;
+  }
+
+  return input.selectedLayer || layers[0] || null;
+}
+
+function filterLayersByPrompt(layers: EditorAssistLayerCandidate[], prompt: string) {
+  const tokens = prompt
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token && !STOP_WORDS.has(token));
+  if (!tokens.length) return [];
+
+  return layers.filter((layer) => {
+    const haystack = `${layer.name} ${layer.kind}`.toLowerCase();
+    return tokens.some((token) => haystack.includes(token));
+  });
+}
+
+function readOrdinalIndex(prompt: string) {
+  if (/\bfirst\b/.test(prompt)) return 0;
+  if (/\bsecond\b/.test(prompt)) return 1;
+  if (/\bthird\b/.test(prompt)) return 2;
+  if (/\bfourth\b/.test(prompt)) return 3;
+  const numeric = prompt.match(/\b(\d+)(?:st|nd|rd|th)\b/);
+  if (!numeric) return null;
+  return Math.max(0, Number(numeric[1]) - 1);
+}
+
+function buildArrowPoints(x1: number, y1: number, x2: number, y2: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const angle = Math.atan2(dy, dx);
+  const headLength = Math.max(18, Math.min(36, Math.hypot(dx, dy) * 0.18));
+  const leftX = x2 - headLength * Math.cos(angle - Math.PI / 6);
+  const leftY = y2 - headLength * Math.sin(angle - Math.PI / 6);
+  const rightX = x2 - headLength * Math.cos(angle + Math.PI / 6);
+  const rightY = y2 - headLength * Math.sin(angle + Math.PI / 6);
+  return [x1, y1, x2, y2, leftX, leftY, x2, y2, rightX, rightY];
+}
+
+const STOP_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "my",
+  "this",
+  "that",
+  "please",
+  "to",
+  "at",
+  "on",
+  "with",
+  "using",
+  "use",
+  "make",
+  "add",
+  "draw",
+  "put",
+  "show",
+  "highlight",
+  "underline",
+  "circle",
+  "box",
+  "around",
+  "under",
+  "over",
+  "point",
+  "arrow",
+  "erase",
+  "remove",
+  "clear",
+  "message",
+  "text",
+  "note",
+  "label",
+]);
 
 function normalizePoints(value: unknown, document: EaselAssistInput["document"]) {
   if (!Array.isArray(value)) return [];

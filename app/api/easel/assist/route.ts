@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { planEasyEaselAssist } from "@/lib/easy-easel-assist";
-import type { EditorAssistSelectedLayer } from "@/types/easy-easel";
+import type { EditorAssistLayerCandidate, EditorAssistSelectedLayer } from "@/types/easy-easel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +22,7 @@ export async function POST(req: Request) {
         backgroundColor?: string;
         layerCount?: number;
       };
+      layers?: EditorAssistLayerCandidate[];
       selectedLayer?: EditorAssistSelectedLayer | null;
     };
 
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
         backgroundColor: String(body.document?.backgroundColor || "#ffffff"),
         layerCount: Number.isFinite(Number(body.document?.layerCount)) ? Number(body.document?.layerCount) : 0,
       },
+      layers: Array.isArray(body.layers) ? body.layers : [],
       selectedLayer: body.selectedLayer || null,
     });
 
