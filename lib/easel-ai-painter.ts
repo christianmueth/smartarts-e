@@ -32,6 +32,7 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendRefinementPass(actions, pixels, sampling, bounds);
 
   return actions;
 }
@@ -85,6 +86,7 @@ function appendPass(
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
       const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
+      const brushScale = adaptiveBrushScale(pass, localContrast(pixels, sampling.columns, sampling.rows, x, y));
       const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
           const jitter = strokeJitter(x, y, pass, unit * 1.25);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
@@ -99,7 +101,7 @@ function appendPass(
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier),
+        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale),
         opacity,
       });
     }
@@ -285,6 +287,50 @@ function appendFaceFeaturePass(
   appendPortraitLandmark(actions, pixels, sampling, bounds, face, "mouth", 0.64, 0.5, 0.7);
 }
 
+function appendRefinementPass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number }
+) {
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (let y = 1; y < sampling.rows - 1; y += 2) {
+    for (let x = 1; x < sampling.columns - 1; x += 2) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      const score = refinementError(pixels, sampling.columns, sampling.rows, x, y);
+      if (score > 72) candidates.push({ x, y, score, pixel });
+    }
+  }
+
+  candidates.sort((first, second) => second.score - first.score);
+  const selected: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (const candidate of candidates) {
+    if (selected.some((item) => Math.abs(item.x - candidate.x) < 3 && Math.abs(item.y - candidate.y) < 3)) continue;
+    selected.push(candidate);
+    if (selected.length === 220) break;
+  }
+
+  for (const candidate of selected) {
+    const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
+    const brushScale = adaptiveBrushScale("final-detail", localContrast(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y));
+    const length = unit * 1.05 * brushScale;
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "final-detail",
+      label: "Error refinement",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(quantizePixel(candidate.pixel, 12)),
+      strokeWidth: Math.max(1, unit * 0.38 * brushScale),
+      opacity: 0.88,
+    });
+  }
+}
+
 function appendPortraitLandmark(
   actions: EditorAssistAction[],
   pixels: Uint8ClampedArray,
@@ -330,6 +376,37 @@ function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x
     colorDistance(pixel, sample(data, columns, rows, x, y - 1)),
     colorDistance(pixel, sample(data, columns, rows, x, y + 1))
   );
+}
+
+function refinementError(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const pixel = sample(data, columns, rows, x, y);
+  return colorDistance(pixel, averageWindow(data, columns, rows, x, y, 4)) + localContrast(data, columns, rows, x, y) * 0.6;
+}
+
+function averageWindow(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number, radius: number): Pixel {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let alpha = 0;
+  let count = 0;
+  for (let yOffset = -radius; yOffset <= radius; yOffset += 1) {
+    for (let xOffset = -radius; xOffset <= radius; xOffset += 1) {
+      const pixel = sample(data, columns, rows, x + xOffset, y + yOffset);
+      red += pixel.red;
+      green += pixel.green;
+      blue += pixel.blue;
+      alpha += pixel.alpha;
+      count += 1;
+    }
+  }
+  return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
+}
+
+function adaptiveBrushScale(pass: EditorPaintPass, contrast: number) {
+  if (pass === "background") return contrast < 28 ? 1.28 : contrast > 90 ? 0.86 : 1.05;
+  if (pass === "major-forms") return contrast > 100 ? 0.76 : contrast > 58 ? 0.92 : 1.12;
+  if (pass === "shading") return contrast > 76 ? 0.84 : 1.04;
+  return contrast > 100 ? 0.72 : 0.9;
 }
 
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
