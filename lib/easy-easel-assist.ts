@@ -166,7 +166,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           "Always use mode=canvas.",
           "Use only text, rect, ellipse, arrow, brush, or eraser.",
           "When asked to draw, doodle, sketch, make, create, or paint something, decide the number of actions from the subject's visual complexity and the supplied parts. Use only the strokes needed for a recognizable drawing; simple objects need fewer marks, while multi-part objects need more structure and detail.",
-          "Make drawings brush-led with an outer contour, major structural features, repeated components when present, and only the hatching, shadows, and highlights that help recognition. Never exceed 48 actions or 36 brush actions. Use rects or ellipses only as optional supporting parts.",
+          "Make drawings brush-led with an outer contour, major structural features, repeated components when present, and only the hatching, shadows, and highlights that help recognition. Use rects or ellipses only as optional supporting parts.",
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
           "Decompose unfamiliar objects into named parts: silhouette, major supports, repeated parts such as wheels or windows, and small identifying details before drawing.",
@@ -1404,9 +1404,8 @@ function describeDrawingComplexity(prompt: string, decomposition: DoodleDecompos
 }
 
 function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null) {
-  if (!plan || plan.actions.length > 48) return false;
+  if (!plan) return false;
   const brushActions = plan.actions.filter((action) => action.tool === "brush");
-  if (brushActions.length > 36) return false;
   if (!brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8)) return false;
   if (!decomposition) return true;
   const labels = plan.actions.map((action) => String(action.label || "").toLowerCase());

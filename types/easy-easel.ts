@@ -54,6 +54,7 @@ export type EditorCanvasDocument = {
   height: number;
   backgroundColor: string;
   layers: EditorLayer[];
+  paintSessions?: EditorPaintSession[];
 };
 
 export type EditorProjectSummary = {
@@ -103,6 +104,8 @@ export type EditorAssistLayerCandidate = EditorAssistSelectedLayer;
 export type EditorAssistAction = {
   tool: EditorAssistTool;
   label?: string;
+  pass?: EditorPaintPass;
+  opacity?: number;
   text?: string;
   x?: number;
   y?: number;
@@ -114,6 +117,21 @@ export type EditorAssistAction = {
   fill?: string;
   strokeWidth?: number;
   points?: number[];
+};
+
+export type EditorPaintPass = "background" | "major-forms" | "shading" | "facial-features" | "final-detail";
+
+export type EditorPaintDetailLevel = "study" | "refined" | "high-detail";
+
+export type EditorPaintSession = {
+  id: string;
+  referenceAssetId: string;
+  referenceTitle: string;
+  detailLevel: EditorPaintDetailLevel;
+  actions: EditorAssistAction[];
+  completedActionCount: number;
+  status: "ready" | "painting" | "paused" | "stopped" | "complete";
+  createdAt: string;
 };
 
 export type EditorAssistPlan = {

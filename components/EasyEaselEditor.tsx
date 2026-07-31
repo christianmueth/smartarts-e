@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text as KonvaText, Transformer } from "react-konva";
 import { toast } from "sonner";
+import { buildReferencePaintingPlan } from "@/lib/easel-ai-painter";
 import { buildStructuredIllustrationPlan } from "@/lib/easel-structured-illustration";
 import type {
   EditorAssistAction,
   EditorAssistPlan,
+  EditorPaintDetailLevel,
+  EditorPaintSession,
   EditorAssistSelectedLayer,
   EditorAsset,
   EditorCanvasDocument,
@@ -47,6 +50,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [canvasWidthInput, setCanvasWidthInput] = useState(String(initialDocument.width));
   const [canvasHeightInput, setCanvasHeightInput] = useState(String(initialDocument.height));
   const [aiPrompt, setAiPrompt] = useState("");
+  const [paintReferenceAssetId, setPaintReferenceAssetId] = useState<string | null>(null);
+  const [paintDetailLevel, setPaintDetailLevel] = useState<EditorPaintDetailLevel>("refined");
+  const [activePaintSessionId, setActivePaintSessionId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
   const [selectionRect, setSelectionRect] = useState<EditorCropRect | null>(null);
@@ -69,6 +75,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const selectionDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; anchorId: string } | null>(null);
   const selectionBoundsDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; startX: number; startY: number } | null>(null);
   const lastStagePointerDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const paintControlRef = useRef<"running" | "paused" | "stopped">("stopped");
 
   const selectedLayer = useMemo(
     () => document.layers.find((layer) => layer.id === selectedLayerId) ?? document.layers.find((layer) => selectedLayerIds.includes(layer.id)) ?? null,
@@ -82,6 +89,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const multiSelectionBounds = useMemo(
     () => selectedLayers.length > 1 ? getCombinedLayerBounds(selectedLayers) : null,
     [selectedLayers]
+  );
+  const paintReferenceAsset = useMemo(
+    () => assets.find((asset) => asset.id === paintReferenceAssetId) ?? null,
+    [assets, paintReferenceAssetId]
+  );
+  const activePaintSession = useMemo(
+    () => document.paintSessions?.find((session) => session.id === activePaintSessionId) ?? null,
+    [document.paintSessions, activePaintSessionId]
   );
 
   useEffect(() => {
@@ -896,6 +911,114 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     commitDocument(workingDocument, { selectedLayerId: lastLayerId, selectedLayerIds: lastLayerId ? [lastLayerId] : [] });
   }
 
+  function updatePaintSession(sessionId: string, update: (session: EditorPaintSession) => EditorPaintSession, commit = false) {
+    const apply = (current: EditorCanvasDocument) => ({
+      ...current,
+      paintSessions: (current.paintSessions || []).map((session) => session.id === sessionId ? update(session) : session),
+    });
+    if (commit) {
+      commitDocument(apply(documentRef.current));
+    } else {
+      setLiveDocument(apply);
+    }
+  }
+
+  async function replayPaintSession(sessionId: string) {
+    const initialSession = documentRef.current.paintSessions?.find((session) => session.id === sessionId);
+    if (!initialSession) return;
+
+    paintControlRef.current = "running";
+    setBusyAction("paint");
+    setActivePaintSessionId(sessionId);
+    updatePaintSession(sessionId, (session) => ({ ...session, status: "painting" }));
+    let workingDocument = documentRef.current;
+    let lastLayerId = getTopLayerId(workingDocument);
+
+    for (let index = initialSession.completedActionCount; index < initialSession.actions.length; index += 1) {
+      while (paintControlRef.current === "paused") {
+        await wait(80);
+      }
+      if (paintControlRef.current === "stopped") {
+        updatePaintSession(sessionId, (session) => ({ ...session, status: "stopped" }), true);
+        setBusyAction(null);
+        return;
+      }
+
+      const action = initialSession.actions[index];
+      const layer = buildLayerFromAssistAction(action, workingDocument);
+      if (layer) {
+        workingDocument = { ...workingDocument, layers: [...workingDocument.layers, layer] };
+        lastLayerId = layer.id;
+      }
+
+      if ((index + 1) % 8 === 0 || index === initialSession.actions.length - 1) {
+        const completedActionCount = index + 1;
+        workingDocument = {
+          ...workingDocument,
+          paintSessions: (workingDocument.paintSessions || []).map((session) => session.id === sessionId
+            ? { ...session, completedActionCount, status: completedActionCount === session.actions.length ? "complete" : "painting" }
+            : session),
+        };
+        documentRef.current = workingDocument;
+        setDocument(workingDocument);
+        setSelectedLayerIds(lastLayerId ? [lastLayerId] : []);
+        setSelectedLayerId(lastLayerId);
+        await wait(12);
+      }
+    }
+
+    commitDocument(workingDocument, { selectedLayerId: lastLayerId, selectedLayerIds: lastLayerId ? [lastLayerId] : [] });
+    setAssistantCursor(null);
+    setBusyAction(null);
+  }
+
+  async function startReferencePainting() {
+    if (!paintReferenceAsset) {
+      toast.error("Choose a reference from the image library first.");
+      return;
+    }
+    setBusyAction("paint");
+    try {
+      const actions = await buildReferencePaintingPlan({
+        imageUrl: paintReferenceAsset.imageUrl,
+        canvas: documentRef.current,
+        detailLevel: paintDetailLevel,
+      });
+      const session: EditorPaintSession = {
+        id: createId("paint"),
+        referenceAssetId: paintReferenceAsset.id,
+        referenceTitle: paintReferenceAsset.title,
+        detailLevel: paintDetailLevel,
+        actions,
+        completedActionCount: 0,
+        status: "ready",
+        createdAt: new Date().toISOString(),
+      };
+      commitDocument({ ...documentRef.current, paintSessions: [...(documentRef.current.paintSessions || []), session] });
+      await replayPaintSession(session.id);
+    } catch (error) {
+      setBusyAction(null);
+      toast.error(error instanceof Error ? error.message : "Unable to prepare the reference for painting.");
+    }
+  }
+
+  function pausePainting() {
+    if (!activePaintSessionId) return;
+    paintControlRef.current = "paused";
+    updatePaintSession(activePaintSessionId, (session) => ({ ...session, status: "paused" }), true);
+  }
+
+  function resumePainting() {
+    if (!activePaintSessionId) return;
+    paintControlRef.current = "running";
+    updatePaintSession(activePaintSessionId, (session) => ({ ...session, status: "painting" }));
+    if (busyAction !== "paint") void replayPaintSession(activePaintSessionId);
+  }
+
+  function stopPainting() {
+    paintControlRef.current = "stopped";
+  }
+
   async function runAi(kind: "generate" | "edit" | "variation") {
     const trimmedPrompt = aiPrompt.trim();
     if (!trimmedPrompt) {
@@ -1454,9 +1577,32 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     {busyAction === "upload" ? "Uploading..." : "Upload image"}
                     <input type="file" accept="image/*" className="hidden" onChange={(event) => void uploadImage(event.target.files?.[0] || null)} />
                   </label>
-                  <AssetShelf title="Uploads" assets={groupedAssets.upload} onInsert={insertAssetAsLayer} />
-                  <AssetShelf title="Generated" assets={groupedAssets.generated} onInsert={insertAssetAsLayer} />
-                  <AssetShelf title="Edited" assets={groupedAssets.edited} onInsert={insertAssetAsLayer} />
+                  <AssetShelf title="Uploads" assets={groupedAssets.upload} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
+                  <AssetShelf title="Generated" assets={groupedAssets.generated} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
+                  <AssetShelf title="Edited" assets={groupedAssets.edited} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
+                </div>
+              </details>
+
+              <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI Painter</summary>
+                <div className="mt-3 space-y-3 text-sm text-pink-700">
+                  <p className="text-xs leading-5 text-pink-600">Choose a library image as a reference, then paint it with replayable Easel brush strokes.</p>
+                  <p className="truncate rounded-lg border border-pink-100 bg-white px-3 py-2 text-xs font-medium text-[#6d2141]">{paintReferenceAsset ? `Reference: ${paintReferenceAsset.title}` : "No reference selected"}</p>
+                  <label className="block">
+                    Detail level
+                    <select value={paintDetailLevel} onChange={(event) => setPaintDetailLevel(event.target.value as EditorPaintDetailLevel)} className="mt-1 w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm">
+                      <option value="study">Study</option>
+                      <option value="refined">Refined</option>
+                      <option value="high-detail">High detail</option>
+                    </select>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void startReferencePainting()} disabled={busyAction !== null} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">Paint reference</button>
+                    <button type="button" onClick={pausePainting} disabled={busyAction !== "paint" || activePaintSession?.status !== "painting"} className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm font-medium text-yellow-900 disabled:opacity-50">Pause</button>
+                    <button type="button" onClick={resumePainting} disabled={!activePaintSession || activePaintSession.status !== "paused"} className="rounded-full border border-pink-200 bg-white px-3 py-2 text-sm font-medium text-pink-700 disabled:opacity-50">Resume</button>
+                    <button type="button" onClick={stopPainting} disabled={busyAction !== "paint"} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 disabled:opacity-50">Stop</button>
+                  </div>
+                  {activePaintSession ? <p className="text-xs text-pink-500">{activePaintSession.status} · {activePaintSession.completedActionCount} of {activePaintSession.actions.length} strokes</p> : null}
                 </div>
               </details>
 
@@ -1667,26 +1813,25 @@ function CanvasImage({ layer }: { layer: EditorImageLayer }) {
   );
 }
 
-function AssetShelf({ title, assets, onInsert }: { title: string; assets: EditorAsset[]; onInsert: (asset: EditorAsset) => void }) {
+function AssetShelf({ title, assets, onInsert, onChooseReference, selectedReferenceId }: { title: string; assets: EditorAsset[]; onInsert: (asset: EditorAsset) => void; onChooseReference: (assetId: string) => void; selectedReferenceId: string | null }) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">{title}</p>
       <div className="mt-2 max-h-[24rem] space-y-2 overflow-y-auto pr-1">
         {assets.length ? assets.map((asset) => (
-          <button
-            key={asset.id}
-            type="button"
-            onClick={() => onInsert(asset)}
-            className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-100 bg-white p-2 text-left hover:border-pink-200"
-          >
+          <div key={asset.id} className={selectedReferenceId === asset.id ? "flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-400 bg-pink-50 p-2" : "flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-100 bg-white p-2"}>
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[radial-gradient(circle_at_top,_rgba(255,236,171,0.9),_rgba(255,246,250,0.95)_58%,_rgba(255,255,255,0.98)_100%)] p-1.5">
               <img src={asset.imageUrl} alt={asset.title} className="max-h-full w-full rounded-lg object-contain" />
             </div>
             <span className="min-w-0 flex-1 overflow-hidden text-sm leading-5 text-[#6d2141]">
               <span className="block truncate font-medium">{asset.title}</span>
-              <span className="block truncate text-xs text-pink-500">Tap to place on canvas</span>
+              <span className="block truncate text-xs text-pink-500">Reference or canvas image</span>
             </span>
-          </button>
+            <div className="flex shrink-0 flex-col gap-1">
+              <button type="button" onClick={() => onChooseReference(asset.id)} className="rounded-full border border-pink-200 bg-white px-2 py-1 text-xs font-medium text-pink-700">Reference</button>
+              <button type="button" onClick={() => onInsert(asset)} className="rounded-full border border-yellow-300 bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-900">Place</button>
+            </div>
+          </div>
         )) : <p className="text-sm text-pink-400">No items yet.</p>}
       </div>
     </div>
@@ -1986,7 +2131,7 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
       width: Math.max(120, Math.round(Number(action.width || 320))),
       height: Math.max(48, Math.round(Number(action.fontSize || 42) * 1.8)),
       rotation: 0,
-      opacity: 1,
+      opacity: Number.isFinite(Number(action.opacity)) ? Math.max(0.05, Math.min(1, Number(action.opacity))) : 1,
       text,
       fill: String(action.color || "#7a1f4f"),
       fontSize: Math.max(18, Math.round(Number(action.fontSize || 42))),
@@ -2006,7 +2151,7 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
       width: Math.max(8, Math.round(Number(action.width || 220))),
       height: Math.max(8, Math.round(Number(action.height || 120))),
       rotation: 0,
-      opacity: 1,
+      opacity: Number.isFinite(Number(action.opacity)) ? Math.max(0.05, Math.min(1, Number(action.opacity))) : 1,
       fill: String(action.fill || "rgba(255,95,178,0.12)"),
       stroke: String(action.stroke || "#ff5fb2"),
       strokeWidth: Math.max(1, Math.round(Number(action.strokeWidth || 4))),
@@ -2027,7 +2172,7 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
       width: document.width,
       height: document.height,
       rotation: 0,
-      opacity: 1,
+      opacity: Number.isFinite(Number(action.opacity)) ? Math.max(0.05, Math.min(1, Number(action.opacity))) : 1,
       points,
       stroke: action.tool === "eraser" ? "#ffffff" : String(action.stroke || "#ff8a5b"),
       strokeWidth: Math.max(2, Math.round(Number(action.strokeWidth || (action.tool === "eraser" ? 24 : action.tool === "arrow" ? 8 : 8)))),
