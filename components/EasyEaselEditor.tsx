@@ -1572,56 +1572,88 @@ function buildLocalCanvasFallbackPlan(
 
 function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string): EditorAssistPlan {
   const normalizedTopic = toDisplayFallbackTopic(topic);
-  const explanation = buildDeterministicExplanationText(topic);
-  const lines = wrapFallbackText(explanation, 64);
+  const explanation = buildDeterministicExplanationSections(topic);
+  const summaryLines = wrapFallbackText(explanation.summary, 64);
+  const pointLines = explanation.keyPoints.map((point) => wrapFallbackText(`• ${point}`, 62).join("\n"));
   const width = Math.max(340, Math.min(document.width - 80, 760));
   const x = Math.max(20, Math.min(document.width - width - 20, document.width / 2 - width / 2));
-  const bodyHeight = Math.max(170, 36 + lines.length * 38);
-  const y = Math.max(24, Math.min(document.height - bodyHeight - 120, document.height * 0.12));
+  const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
+  const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
+  const cardHeight = 136 + summaryHeight + pointsHeight;
+  const y = Math.max(24, Math.min(document.height - cardHeight - 40, document.height * 0.08));
+
+  const actions: EditorAssistAction[] = [
+    {
+      tool: "rect",
+      label: "Explanation card",
+      x,
+      y,
+      width,
+      height: cardHeight,
+      stroke: "#ff8a5b",
+      fill: "rgba(255,248,220,0.78)",
+      strokeWidth: 4,
+    },
+    {
+      tool: "text",
+      label: "Explanation title",
+      text: `Explain: ${normalizedTopic}`,
+      x: x + 24,
+      y: y + 22,
+      width: width - 48,
+      fontSize: 34,
+      color: "#7a1f4f",
+    },
+    {
+      tool: "brush",
+      label: "Title underline",
+      points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
+      stroke: "#ff5fb2",
+      strokeWidth: 6,
+    },
+    {
+      tool: "text",
+      label: "Explanation summary",
+      text: summaryLines.join("\n"),
+      x: x + 24,
+      y: y + 96,
+      width: width - 48,
+      fontSize: 28,
+      color: "#5f2141",
+    },
+  ];
+
+  let pointY = y + 96 + summaryHeight + 12;
+  pointLines.forEach((pointText, index) => {
+    const pointHeight = 24 + pointText.split("\n").length * 30;
+    actions.push({
+      tool: "rect",
+      label: `Key point card ${index + 1}`,
+      x: x + 24,
+      y: pointY,
+      width: width - 48,
+      height: pointHeight,
+      stroke: index % 2 === 0 ? "#ffb200" : "#5abf9a",
+      fill: index % 2 === 0 ? "rgba(255,214,82,0.18)" : "rgba(90,191,154,0.16)",
+      strokeWidth: 2,
+    });
+    actions.push({
+      tool: "text",
+      label: `Key point ${index + 1}`,
+      text: pointText,
+      x: x + 42,
+      y: pointY + 12,
+      width: width - 84,
+      fontSize: 24,
+      color: "#5f2141",
+    });
+    pointY += pointHeight + 12;
+  });
 
   return {
     mode: "canvas",
     assistantMessage: `Writing an explanation about ${topic}.`,
-    actions: [
-      {
-        tool: "rect",
-        label: "Explanation card",
-        x,
-        y,
-        width,
-        height: bodyHeight + 92,
-        stroke: "#ff8a5b",
-        fill: "rgba(255,248,220,0.78)",
-        strokeWidth: 4,
-      },
-      {
-        tool: "text",
-        label: "Explanation title",
-        text: `Explain: ${normalizedTopic}`,
-        x: x + 24,
-        y: y + 22,
-        width: width - 48,
-        fontSize: 34,
-        color: "#7a1f4f",
-      },
-      {
-        tool: "brush",
-        label: "Title underline",
-        points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
-        stroke: "#ff5fb2",
-        strokeWidth: 6,
-      },
-      {
-        tool: "text",
-        label: "Explanation body",
-        text: lines.join("\n"),
-        x: x + 24,
-        y: y + 92,
-        width: width - 48,
-        fontSize: 28,
-        color: "#5f2141",
-      },
-    ],
+    actions,
   };
 }
 
@@ -1734,13 +1766,27 @@ function toDisplayFallbackTopic(topic: string) {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
-function buildDeterministicExplanationText(topic: string) {
+function buildDeterministicExplanationSections(topic: string) {
   if (/photosynthesis/i.test(topic)) {
-    return "Photosynthesis is how plants make food from sunlight. Plants take in water through their roots and carbon dioxide from the air. Light energy helps turn those ingredients into sugar for growth. Oxygen is released as a byproduct.";
+    return {
+      summary: "Photosynthesis is how plants use sunlight to make sugar for energy and growth.",
+      keyPoints: [
+        "Plants absorb water through their roots and carbon dioxide from the air.",
+        "Light energy drives a reaction in the leaves that turns those inputs into sugar.",
+        "Oxygen is released as a byproduct, which helps support life on Earth.",
+      ],
+    };
   }
 
   const subject = toDisplayFallbackTopic(topic);
-  return `${subject} can be explained by naming what it is, how it works, and why it matters. Start with the core idea, then describe the steps or parts involved, and finish with the result or purpose.`;
+  return {
+    summary: `${subject} is easiest to understand by focusing on what it is, how it works, and why it matters.`,
+    keyPoints: [
+      "Start with the core definition so the main idea is clear.",
+      "Break the process or structure into simple parts or steps.",
+      "End with the outcome, use, or reason the topic is important.",
+    ],
+  };
 }
 
 function wrapFallbackText(value: string, maxLineLength: number) {

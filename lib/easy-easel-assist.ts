@@ -13,6 +13,31 @@ type EaselAssistInput = {
   selectedLayer?: EditorAssistSelectedLayer | null;
 };
 
+type ExplanationSections = {
+  summary: string;
+  keyPoints: string[];
+};
+
+type SketchStyle = {
+  stroke: string;
+  fill: string;
+  accent: string;
+  secondary: string;
+  strokeWidth: number;
+  scale: number;
+  stretchX: number;
+  stretchY: number;
+  rough: boolean;
+};
+
+type SketchBuilder = (input: EaselAssistInput, style: SketchStyle) => EditorAssistPlan;
+
+type SketchLexiconEntry = {
+  nouns: string[];
+  build: SketchBuilder;
+  message: string;
+};
+
 const easelAssistSchema = {
   type: "object",
   additionalProperties: false,
@@ -73,14 +98,14 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
 
 async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
   const topic = extractExplanationTopic(input.prompt) || "this topic";
-  const explanation = await generateExplanationText(topic);
-  const body = explanation || buildDeterministicExplanation(topic);
+  const sections = await generateExplanationSections(topic);
+  const content = sections || buildDeterministicExplanationSections(topic);
 
-  if (!body) {
+  if (!content) {
     return null;
   }
 
-  return buildExplanationLayout(input.document, topic, body);
+  return buildExplanationLayout(input.document, topic, content);
 }
 
 async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -164,16 +189,9 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
   const targetLayer = resolveTargetLayer(input);
   const target = getTargetBounds(input.document, targetLayer);
 
-  if (/(flower|petal|daisy|rose|tulip|sunflower)/.test(lower)) {
-    return buildFlowerSketchPlan(input);
-  }
-
-  if (/(heart|love)/.test(lower)) {
-    return buildHeartSketchPlan(input);
-  }
-
-  if (/(sun|sunshine)/.test(lower)) {
-    return buildSunSketchPlan(input);
+  const sketchEntry = findSketchLexiconEntry(lower);
+  if (sketchEntry) {
+    return sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message));
   }
 
   if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
@@ -331,18 +349,33 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
   return null;
 }
 
-async function generateExplanationText(topic: string) {
+async function generateExplanationSections(topic: string): Promise<ExplanationSections | null> {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      keyPoints: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 2,
+        maxItems: 4,
+      },
+    },
+    required: ["summary", "keyPoints"],
+  } as const;
+
   const result = await callLLMResult(
     [
       {
         role: "system",
         content: [
           "You write short, clear teaching explanations for an Easy Easel canvas.",
-          "Return plain text only.",
-          "Write 3 to 5 concise sentences.",
+          "Return JSON only.",
+          "Write one concise summary sentence and 3 brief sub-points.",
           "Use simple language, but keep the explanation correct.",
-          "Do not use markdown, bullets, numbering, or headings.",
-          "Keep the total under 420 characters.",
+          "Do not use markdown or numbering.",
+          "Keep the total combined text under 520 characters.",
         ].join(" "),
       },
       {
@@ -350,29 +383,40 @@ async function generateExplanationText(topic: string) {
         content: `Explain ${topic}.`,
       },
     ],
-    260,
+    340,
     0.3,
-    { timeoutMs: 18_000 }
+    {
+      guidedJson: schema,
+      responseFormat: {
+        type: "json_schema",
+        json_schema: {
+          name: "easy_easel_explanation",
+          schema,
+        },
+      },
+      timeoutMs: 18_000,
+    }
   );
 
   if (!result.ok) {
     return null;
   }
 
-  const cleaned = cleanCanvasParagraph(result.content);
-  return cleaned || null;
+  const parsed = safeJsonParse(result.content);
+  const normalized = normalizeExplanationSections(parsed);
+  return normalized;
 }
 
-function buildFlowerSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+function buildFlowerSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
   const centerX = input.document.width * 0.5;
   const centerY = input.document.height * 0.42;
-  const petalWidth = 96;
-  const petalHeight = 64;
+  const petalWidth = 96 * style.scale * style.stretchX;
+  const petalHeight = 64 * style.scale * style.stretchY;
   const offsets = [
-    { x: -56, y: -10 },
-    { x: 10, y: -56 },
-    { x: 76, y: -10 },
-    { x: 10, y: 36 },
+    { x: -56 * style.scale, y: -10 * style.scale },
+    { x: 10 * style.scale, y: -56 * style.scale },
+    { x: 76 * style.scale, y: -10 * style.scale },
+    { x: 10 * style.scale, y: 36 * style.scale },
   ];
 
   return {
@@ -386,54 +430,54 @@ function buildFlowerSketchPlan(input: EaselAssistInput): EditorAssistPlan {
         y: centerY + offset.y,
         width: petalWidth,
         height: petalHeight,
-        stroke: "#ff5fb2",
-        fill: "rgba(255,182,214,0.42)",
-        strokeWidth: 4,
+        stroke: style.stroke,
+        fill: style.fill,
+        strokeWidth: style.strokeWidth,
       })),
       {
         tool: "ellipse",
         label: "Flower center",
-        x: centerX + 14,
-        y: centerY + 8,
-        width: 48,
-        height: 48,
-        stroke: "#ffb200",
-        fill: "rgba(255,214,82,0.75)",
-        strokeWidth: 4,
+        x: centerX + 14 * style.scale,
+        y: centerY + 8 * style.scale,
+        width: 48 * style.scale,
+        height: 48 * style.scale,
+        stroke: style.accent,
+        fill: withAlpha(style.accent, 0.45),
+        strokeWidth: style.strokeWidth,
       },
       {
         tool: "brush",
         label: "Stem",
         points: [
-          centerX + 38,
-          centerY + 54,
-          centerX + 30,
-          centerY + 126,
-          centerX + 24,
-          centerY + 188,
+          centerX + 38 * style.scale,
+          centerY + 54 * style.scale,
+          centerX + 30 * style.scale,
+          centerY + 126 * style.scale,
+          centerX + 24 * style.scale,
+          centerY + 188 * style.scale,
         ],
-        stroke: "#2ca24f",
-        strokeWidth: 10,
+        stroke: style.secondary,
+        strokeWidth: Math.max(6, style.strokeWidth + 2),
       },
       {
         tool: "brush",
         label: "Leaf",
         points: [
-          centerX + 28,
-          centerY + 150,
-          centerX - 12,
-          centerY + 168,
-          centerX + 14,
-          centerY + 186,
+          centerX + 28 * style.scale,
+          centerY + 150 * style.scale,
+          centerX - 12 * style.scale,
+          centerY + 168 * style.scale,
+          centerX + 14 * style.scale,
+          centerY + 186 * style.scale,
         ],
-        stroke: "#2ca24f",
-        strokeWidth: 8,
+        stroke: style.secondary,
+        strokeWidth: Math.max(5, style.strokeWidth + 1),
       },
     ],
   };
 }
 
-function buildHeartSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+function buildHeartSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
   const centerX = input.document.width * 0.5;
   const centerY = input.document.height * 0.38;
   return {
@@ -445,28 +489,28 @@ function buildHeartSketchPlan(input: EaselAssistInput): EditorAssistPlan {
         label: "Heart",
         points: [
           centerX,
-          centerY + 110,
-          centerX - 92,
-          centerY + 20,
-          centerX - 54,
-          centerY - 48,
+          centerY + 110 * style.scale,
+          centerX - 92 * style.scale * style.stretchX,
+          centerY + 20 * style.scale,
+          centerX - 54 * style.scale * style.stretchX,
+          centerY - 48 * style.scale * style.stretchY,
           centerX,
-          centerY - 2,
-          centerX + 54,
-          centerY - 48,
-          centerX + 92,
-          centerY + 20,
+          centerY - 2 * style.scale,
+          centerX + 54 * style.scale * style.stretchX,
+          centerY - 48 * style.scale * style.stretchY,
+          centerX + 92 * style.scale * style.stretchX,
+          centerY + 20 * style.scale,
           centerX,
-          centerY + 110,
+          centerY + 110 * style.scale,
         ],
-        stroke: "#ff5fb2",
-        strokeWidth: 10,
+        stroke: style.stroke,
+        strokeWidth: Math.max(6, style.strokeWidth + (style.rough ? 2 : 0)),
       },
     ],
   };
 }
 
-function buildSunSketchPlan(input: EaselAssistInput): EditorAssistPlan {
+function buildSunSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
   const centerX = input.document.width * 0.5;
   const centerY = input.document.height * 0.34;
   return {
@@ -476,54 +520,332 @@ function buildSunSketchPlan(input: EaselAssistInput): EditorAssistPlan {
       {
         tool: "ellipse",
         label: "Sun",
-        x: centerX - 54,
-        y: centerY - 54,
-        width: 108,
-        height: 108,
-        stroke: "#ffb200",
-        fill: "rgba(255,214,82,0.55)",
-        strokeWidth: 5,
+        x: centerX - 54 * style.scale,
+        y: centerY - 54 * style.scale,
+        width: 108 * style.scale,
+        height: 108 * style.scale,
+        stroke: style.accent,
+        fill: withAlpha(style.accent, 0.3),
+        strokeWidth: Math.max(4, style.strokeWidth),
       },
       {
         tool: "brush",
         label: "Rays",
         points: [
           centerX,
-          centerY - 92,
+          centerY - 92 * style.scale,
           centerX,
-          centerY - 132,
-          centerX + 62,
-          centerY - 62,
-          centerX + 90,
-          centerY - 90,
-          centerX + 92,
+          centerY - 132 * style.scale,
+          centerX + 62 * style.scale,
+          centerY - 62 * style.scale,
+          centerX + 90 * style.scale,
+          centerY - 90 * style.scale,
+          centerX + 92 * style.scale,
           centerY,
-          centerX + 132,
+          centerX + 132 * style.scale,
           centerY,
-          centerX + 62,
-          centerY + 62,
-          centerX + 90,
-          centerY + 90,
+          centerX + 62 * style.scale,
+          centerY + 62 * style.scale,
+          centerX + 90 * style.scale,
+          centerY + 90 * style.scale,
           centerX,
-          centerY + 92,
+          centerY + 92 * style.scale,
           centerX,
-          centerY + 132,
-          centerX - 62,
-          centerY + 62,
-          centerX - 90,
-          centerY + 90,
-          centerX - 92,
+          centerY + 132 * style.scale,
+          centerX - 62 * style.scale,
+          centerY + 62 * style.scale,
+          centerX - 90 * style.scale,
+          centerY + 90 * style.scale,
+          centerX - 92 * style.scale,
           centerY,
-          centerX - 132,
+          centerX - 132 * style.scale,
           centerY,
-          centerX - 62,
-          centerY - 62,
-          centerX - 90,
-          centerY - 90,
+          centerX - 62 * style.scale,
+          centerY - 62 * style.scale,
+          centerX - 90 * style.scale,
+          centerY - 90 * style.scale,
         ],
-        stroke: "#ffb200",
-        strokeWidth: 6,
+        stroke: style.accent,
+        strokeWidth: Math.max(4, style.strokeWidth),
       },
+    ],
+  };
+}
+
+function buildStarSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  const outer = 88 * style.scale;
+  const inner = 36 * style.scale;
+  const points: number[] = [];
+  for (let index = 0; index < 10; index += 1) {
+    const radius = index % 2 === 0 ? outer : inner;
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+    points.push(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+  }
+  points.push(points[0], points[1]);
+
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a star with easel tools.",
+    actions: [
+      {
+        tool: "brush",
+        label: "Star",
+        points,
+        stroke: style.stroke,
+        strokeWidth: Math.max(5, style.strokeWidth + 1),
+      },
+    ],
+  };
+}
+
+function buildCloudSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  const puffWidth = 90 * style.scale * style.stretchX;
+  const puffHeight = 62 * style.scale * style.stretchY;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a cloud with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Cloud puff 1", x: centerX - 120 * style.scale, y: centerY, width: puffWidth, height: puffHeight, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Cloud puff 2", x: centerX - 46 * style.scale, y: centerY - 34 * style.scale, width: puffWidth, height: puffHeight, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Cloud puff 3", x: centerX + 22 * style.scale, y: centerY - 6 * style.scale, width: puffWidth, height: puffHeight, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "rect", label: "Cloud base", x: centerX - 118 * style.scale, y: centerY + 26 * style.scale, width: 234 * style.scale * style.stretchX, height: 52 * style.scale, stroke: style.stroke, fill: withAlpha(style.stroke, 0.18), strokeWidth: style.strokeWidth },
+    ],
+  };
+}
+
+function buildMoonSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.32;
+  const radius = 94 * style.scale;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a moon with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Moon outer", x: centerX - radius, y: centerY - radius, width: radius * 2, height: radius * 2, stroke: style.stroke, fill: withAlpha(style.accent, 0.28), strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Moon cutout", x: centerX - radius * 0.2, y: centerY - radius, width: radius * 1.7, height: radius * 2, stroke: cleanColor(input.document.backgroundColor, "#ffffff"), fill: cleanColor(input.document.backgroundColor, "#ffffff"), strokeWidth: 1 },
+    ],
+  };
+}
+
+function buildTreeSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a tree with easel tools.",
+    actions: [
+      { tool: "rect", label: "Trunk", x: centerX - 22 * style.scale, y: centerY + 84 * style.scale, width: 44 * style.scale, height: 132 * style.scale, stroke: "#7a4b2a", fill: "rgba(122,75,42,0.3)", strokeWidth: Math.max(3, style.strokeWidth - 1) },
+      { tool: "ellipse", label: "Canopy 1", x: centerX - 118 * style.scale, y: centerY - 10 * style.scale, width: 118 * style.scale, height: 92 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Canopy 2", x: centerX - 50 * style.scale, y: centerY - 72 * style.scale, width: 118 * style.scale, height: 96 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Canopy 3", x: centerX + 18 * style.scale, y: centerY - 8 * style.scale, width: 118 * style.scale, height: 92 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+    ],
+  };
+}
+
+function buildLeafSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.38;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a leaf with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Leaf body", x: centerX - 84 * style.scale * style.stretchX, y: centerY - 56 * style.scale, width: 168 * style.scale * style.stretchX, height: 112 * style.scale * style.stretchY, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Leaf vein", points: [centerX - 64 * style.scale, centerY + 42 * style.scale, centerX - 10 * style.scale, centerY - 8 * style.scale, centerX + 70 * style.scale, centerY - 50 * style.scale], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildAppleSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.38;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching an apple with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Apple left", x: centerX - 94 * style.scale, y: centerY - 42 * style.scale, width: 92 * style.scale, height: 104 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Apple right", x: centerX - 4 * style.scale, y: centerY - 42 * style.scale, width: 92 * style.scale, height: 104 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Stem", points: [centerX, centerY - 30 * style.scale, centerX + 8 * style.scale, centerY - 74 * style.scale], stroke: "#7a4b2a", strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "brush", label: "Leaf", points: [centerX + 10 * style.scale, centerY - 70 * style.scale, centerX + 38 * style.scale, centerY - 94 * style.scale, centerX + 58 * style.scale, centerY - 68 * style.scale], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildHouseSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.4;
+  const width = 180 * style.scale * style.stretchX;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a house with easel tools.",
+    actions: [
+      { tool: "rect", label: "House body", x: centerX - width / 2, y: centerY, width, height: 132 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Roof", points: [centerX - width / 2 - 10, centerY, centerX, centerY - 104 * style.scale, centerX + width / 2 + 10, centerY], stroke: style.accent, strokeWidth: Math.max(5, style.strokeWidth + 1) },
+      { tool: "rect", label: "Door", x: centerX - 22 * style.scale, y: centerY + 56 * style.scale, width: 44 * style.scale, height: 76 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.14), strokeWidth: Math.max(3, style.strokeWidth - 1) },
+      { tool: "rect", label: "Window", x: centerX - 68 * style.scale, y: centerY + 30 * style.scale, width: 34 * style.scale, height: 34 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.1), strokeWidth: 2 },
+      { tool: "rect", label: "Window", x: centerX + 34 * style.scale, y: centerY + 30 * style.scale, width: 34 * style.scale, height: 34 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.1), strokeWidth: 2 },
+    ],
+  };
+}
+
+function buildMountainSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const baseY = input.document.height * 0.58;
+  const centerX = input.document.width * 0.5;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching mountains with easel tools.",
+    actions: [
+      { tool: "brush", label: "Back mountain", points: [centerX - 190 * style.scale, baseY + 34 * style.scale, centerX - 64 * style.scale, baseY - 120 * style.scale, centerX + 32 * style.scale, baseY + 26 * style.scale], stroke: style.secondary, strokeWidth: Math.max(5, style.strokeWidth + 1) },
+      { tool: "brush", label: "Front mountain", points: [centerX - 54 * style.scale, baseY + 30 * style.scale, centerX + 72 * style.scale, baseY - 148 * style.scale, centerX + 214 * style.scale, baseY + 40 * style.scale], stroke: style.stroke, strokeWidth: Math.max(6, style.strokeWidth + 2) },
+    ],
+  };
+}
+
+function buildRainbowSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.6;
+  const colors = ["#ff595e", "#ff924c", "#ffca3a", "#8ac926", "#1982c4"];
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a rainbow with easel tools.",
+    actions: colors.map((color, index) => ({
+      tool: "brush" as const,
+      label: `Rainbow arc ${index + 1}`,
+      points: buildArcPoints(centerX, centerY, (210 - index * 24) * style.scale, Math.PI, Math.PI * 2, 18),
+      stroke: color,
+      strokeWidth: Math.max(4, style.strokeWidth + 1),
+    })),
+  };
+}
+
+function buildBalloonSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.32;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a balloon with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Balloon", x: centerX - 54 * style.scale, y: centerY - 62 * style.scale, width: 108 * style.scale, height: 136 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "String", points: [centerX, centerY + 76 * style.scale, centerX - 14 * style.scale, centerY + 136 * style.scale, centerX + 4 * style.scale, centerY + 210 * style.scale], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildSpeechBubbleSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  const width = 260 * style.scale * style.stretchX;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a speech bubble with easel tools.",
+    actions: [
+      { tool: "rect", label: "Bubble", x: centerX - width / 2, y: centerY - 50 * style.scale, width, height: 118 * style.scale * style.stretchY, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Bubble tail", points: [centerX - 32 * style.scale, centerY + 68 * style.scale, centerX - 4 * style.scale, centerY + 118 * style.scale, centerX + 26 * style.scale, centerY + 72 * style.scale], stroke: style.stroke, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildLightningSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.26;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching lightning with easel tools.",
+    actions: [
+      { tool: "brush", label: "Lightning", points: [centerX - 24 * style.scale, centerY - 10 * style.scale, centerX + 18 * style.scale, centerY - 10 * style.scale, centerX - 2 * style.scale, centerY + 54 * style.scale, centerX + 34 * style.scale, centerY + 54 * style.scale, centerX - 42 * style.scale, centerY + 160 * style.scale], stroke: style.accent, strokeWidth: Math.max(6, style.strokeWidth + 2) },
+    ],
+  };
+}
+
+function buildBookSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.38;
+  const width = 220 * style.scale * style.stretchX;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a book with easel tools.",
+    actions: [
+      { tool: "rect", label: "Left page", x: centerX - width / 2, y: centerY - 70 * style.scale, width: width / 2 - 6, height: 150 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "rect", label: "Right page", x: centerX + 6, y: centerY - 70 * style.scale, width: width / 2 - 6, height: 150 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Spine", points: [centerX, centerY - 70 * style.scale, centerX, centerY + 80 * style.scale], stroke: style.secondary, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildFishSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.42;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a fish with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Fish body", x: centerX - 88 * style.scale, y: centerY - 44 * style.scale, width: 176 * style.scale * style.stretchX, height: 88 * style.scale * style.stretchY, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Tail", points: [centerX + 88 * style.scale, centerY, centerX + 144 * style.scale, centerY - 44 * style.scale, centerX + 144 * style.scale, centerY + 44 * style.scale, centerX + 88 * style.scale, centerY], stroke: style.stroke, strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "ellipse", label: "Eye", x: centerX - 50 * style.scale, y: centerY - 10 * style.scale, width: 14 * style.scale, height: 14 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.35), strokeWidth: 2 },
+    ],
+  };
+}
+
+function buildButterflySketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.38;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a butterfly with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Wing 1", x: centerX - 118 * style.scale, y: centerY - 70 * style.scale, width: 96 * style.scale, height: 110 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Wing 2", x: centerX + 22 * style.scale, y: centerY - 70 * style.scale, width: 96 * style.scale, height: 110 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Wing 3", x: centerX - 100 * style.scale, y: centerY + 14 * style.scale, width: 82 * style.scale, height: 88 * style.scale, stroke: style.accent, fill: withAlpha(style.accent, 0.22), strokeWidth: style.strokeWidth },
+      { tool: "ellipse", label: "Wing 4", x: centerX + 18 * style.scale, y: centerY + 14 * style.scale, width: 82 * style.scale, height: 88 * style.scale, stroke: style.accent, fill: withAlpha(style.accent, 0.22), strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Body", points: [centerX, centerY - 64 * style.scale, centerX, centerY + 110 * style.scale], stroke: style.secondary, strokeWidth: Math.max(5, style.strokeWidth + 1) },
+    ],
+  };
+}
+
+function buildSmileySketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  const radius = 96 * style.scale;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a smiley face with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Face", x: centerX - radius, y: centerY - radius, width: radius * 2, height: radius * 2, stroke: style.accent, fill: withAlpha(style.accent, 0.3), strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Eye 1", x: centerX - 42 * style.scale, y: centerY - 18 * style.scale, width: 16 * style.scale, height: 16 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.3), strokeWidth: 2 },
+      { tool: "ellipse", label: "Eye 2", x: centerX + 26 * style.scale, y: centerY - 18 * style.scale, width: 16 * style.scale, height: 16 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.3), strokeWidth: 2 },
+      { tool: "brush", label: "Smile", points: buildArcPoints(centerX, centerY + 12 * style.scale, 48 * style.scale, 0.15 * Math.PI, 0.85 * Math.PI, 12), stroke: style.stroke, strokeWidth: Math.max(4, style.strokeWidth) },
+    ],
+  };
+}
+
+function buildFlagSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.34;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a flag with easel tools.",
+    actions: [
+      { tool: "brush", label: "Pole", points: [centerX - 70 * style.scale, centerY - 84 * style.scale, centerX - 70 * style.scale, centerY + 140 * style.scale], stroke: style.secondary, strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "brush", label: "Flag", points: [centerX - 68 * style.scale, centerY - 80 * style.scale, centerX + 36 * style.scale, centerY - 62 * style.scale, centerX - 2 * style.scale, centerY - 22 * style.scale, centerX + 34 * style.scale, centerY + 12 * style.scale, centerX - 68 * style.scale, centerY + 6 * style.scale], stroke: style.stroke, strokeWidth: Math.max(5, style.strokeWidth + 1) },
+    ],
+  };
+}
+
+function buildRocketSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.32;
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a rocket with easel tools.",
+    actions: [
+      { tool: "ellipse", label: "Rocket body", x: centerX - 44 * style.scale, y: centerY - 72 * style.scale, width: 88 * style.scale, height: 180 * style.scale, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Left fin", points: [centerX - 44 * style.scale, centerY + 56 * style.scale, centerX - 86 * style.scale, centerY + 104 * style.scale, centerX - 28 * style.scale, centerY + 92 * style.scale], stroke: style.accent, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "brush", label: "Right fin", points: [centerX + 44 * style.scale, centerY + 56 * style.scale, centerX + 86 * style.scale, centerY + 104 * style.scale, centerX + 28 * style.scale, centerY + 92 * style.scale], stroke: style.accent, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Window", x: centerX - 16 * style.scale, y: centerY - 18 * style.scale, width: 32 * style.scale, height: 32 * style.scale, stroke: style.secondary, fill: withAlpha(style.secondary, 0.2), strokeWidth: 2 },
+      { tool: "brush", label: "Flame", points: [centerX, centerY + 108 * style.scale, centerX - 20 * style.scale, centerY + 154 * style.scale, centerX, centerY + 138 * style.scale, centerX + 20 * style.scale, centerY + 154 * style.scale, centerX, centerY + 108 * style.scale], stroke: "#ff924c", strokeWidth: Math.max(5, style.strokeWidth + 1) },
     ],
   };
 }
@@ -582,58 +904,91 @@ function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAs
 function buildExplanationLayout(
   document: EaselAssistInput["document"],
   topic: string,
-  body: string
+  content: ExplanationSections
 ): EditorAssistPlan {
   const width = clamp(Math.min(document.width - 80, 760), 320, document.width - 40);
   const x = clamp(document.width / 2 - width / 2, 20, Math.max(20, document.width - width - 20));
   const title = `Explain: ${toTitleText(topic) || topic}`;
-  const bodyLines = splitCanvasText(body, 64);
-  const bodyHeight = Math.max(170, 36 + bodyLines.length * 38);
-  const y = clamp(document.height * 0.12, 24, Math.max(24, document.height - bodyHeight - 120));
+  const summaryLines = splitCanvasText(content.summary, 64);
+  const pointLines = content.keyPoints.map((point) => splitCanvasText(`• ${point}`, 62).join("\n"));
+  const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
+  const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
+  const cardHeight = 136 + summaryHeight + pointsHeight;
+  const y = clamp(document.height * 0.08, 24, Math.max(24, document.height - cardHeight - 40));
+  const summaryY = y + 96;
+  let pointY = summaryY + summaryHeight + 12;
+
+  const actions: EditorAssistAction[] = [
+    {
+      tool: "rect",
+      label: "Explanation card",
+      x,
+      y,
+      width,
+      height: cardHeight,
+      stroke: "#ff8a5b",
+      fill: "rgba(255,248,220,0.78)",
+      strokeWidth: 4,
+    },
+    {
+      tool: "text",
+      label: "Explanation title",
+      text: title,
+      x: x + 24,
+      y: y + 22,
+      width: width - 48,
+      fontSize: 34,
+      color: "#7a1f4f",
+    },
+    {
+      tool: "brush",
+      label: "Title underline",
+      points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
+      stroke: "#ff5fb2",
+      strokeWidth: 6,
+    },
+    {
+      tool: "text",
+      label: "Explanation summary",
+      text: summaryLines.join("\n"),
+      x: x + 24,
+      y: summaryY,
+      width: width - 48,
+      fontSize: 28,
+      color: "#5f2141",
+    },
+  ];
+
+  pointLines.forEach((pointText, index) => {
+    const pointHeight = 24 + pointText.split("\n").length * 30;
+    actions.push({
+      tool: "rect",
+      label: `Key point card ${index + 1}`,
+      x: x + 24,
+      y: pointY,
+      width: width - 48,
+      height: pointHeight,
+      stroke: index % 2 === 0 ? "#ffb200" : "#5abf9a",
+      fill: index % 2 === 0 ? "rgba(255,214,82,0.18)" : "rgba(90,191,154,0.16)",
+      strokeWidth: 2,
+    });
+    actions.push({
+      tool: "text",
+      label: `Key point ${index + 1}`,
+      text: pointText,
+      x: x + 42,
+      y: pointY + 12,
+      width: width - 84,
+      fontSize: 24,
+      color: "#5f2141",
+    });
+    pointY += pointHeight + 12;
+  });
 
   return {
     mode: "canvas",
     assistantMessage: `Writing an explanation about ${topic}.`,
-    actions: [
-      {
-        tool: "rect",
-        label: "Explanation card",
-        x,
-        y,
-        width,
-        height: bodyHeight + 92,
-        stroke: "#ff8a5b",
-        fill: "rgba(255,248,220,0.78)",
-        strokeWidth: 4,
-      },
-      {
-        tool: "text",
-        label: "Explanation title",
-        text: title,
-        x: x + 24,
-        y: y + 22,
-        width: width - 48,
-        fontSize: 34,
-        color: "#7a1f4f",
-      },
-      {
-        tool: "brush",
-        label: "Title underline",
-        points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
-        stroke: "#ff5fb2",
-        strokeWidth: 6,
-      },
-      {
-        tool: "text",
-        label: "Explanation body",
-        text: bodyLines.join("\n"),
-        x: x + 24,
-        y: y + 92,
-        width: width - 48,
-        fontSize: 28,
-        color: "#5f2141",
-      },
-    ],
+    actions,
   };
 }
 
@@ -821,6 +1176,16 @@ function buildArrowPoints(x1: number, y1: number, x2: number, y2: number) {
   return [x1, y1, x2, y2, leftX, leftY, x2, y2, rightX, rightY];
 }
 
+function buildArcPoints(centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number, segments: number) {
+  const points: number[] = [];
+  for (let index = 0; index <= segments; index += 1) {
+    const t = index / segments;
+    const angle = startAngle + (endAngle - startAngle) * t;
+    points.push(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+  }
+  return points;
+}
+
 const STOP_WORDS = new Set([
   "a",
   "an",
@@ -935,12 +1300,7 @@ function round(value: number) {
 }
 
 function buildDeterministicExplanation(topic: string) {
-  const normalized = toTitleText(topic) || topic;
-  if (/photosynthesis/i.test(topic)) {
-    return "Photosynthesis is the process plants use to make food from sunlight. They take in water from their roots and carbon dioxide from the air. Using light energy, they turn those ingredients into sugar for growth and release oxygen as a byproduct.";
-  }
-
-  return `${normalized} can be understood by breaking it into its main idea, the inputs it depends on, and the result it produces. Start with what it is, then explain how it works step by step, and finish with why it matters.`;
+  return buildDeterministicExplanationSections(topic).summary;
 }
 
 function cleanCanvasParagraph(value: string) {
@@ -968,3 +1328,145 @@ function splitCanvasText(value: string, maxLineLength: number) {
 
   return lines.slice(0, 7);
 }
+
+function normalizeExplanationSections(value: unknown): ExplanationSections | null {
+  const record = asRecord(value);
+  const summary = cleanCanvasParagraph(record.summary as string);
+  const keyPoints = Array.isArray(record.keyPoints)
+    ? record.keyPoints.map((point) => cleanCanvasParagraph(point)).filter(Boolean).slice(0, 4)
+    : [];
+  if (!summary || keyPoints.length < 2) {
+    return null;
+  }
+  return { summary, keyPoints };
+}
+
+function buildDeterministicExplanationSections(topic: string): ExplanationSections {
+  if (/photosynthesis/i.test(topic)) {
+    return {
+      summary: "Photosynthesis is how plants use sunlight to make sugar for energy and growth.",
+      keyPoints: [
+        "Plants absorb water through their roots and carbon dioxide from the air.",
+        "Light energy powers a reaction in the leaves that turns those inputs into sugar.",
+        "Oxygen is released as a byproduct, which helps support life on Earth.",
+      ],
+    };
+  }
+
+  const normalized = toTitleText(topic) || topic;
+  return {
+    summary: `${normalized} is easiest to understand by focusing on what it is, how it works, and why it matters.`,
+    keyPoints: [
+      "Start with the core definition so the main idea is clear.",
+      "Break the process or structure into simple parts or steps.",
+      "End with the outcome, use, or reason the topic is important.",
+    ],
+  };
+}
+
+function findSketchLexiconEntry(prompt: string) {
+  return SKETCH_LEXICON.find((entry) => entry.nouns.some((noun) => new RegExp(`\\b${escapeRegExp(noun)}\\b`, "i").test(prompt))) || null;
+}
+
+function extractSketchStyle(prompt: string, message: string): SketchStyle {
+  const style: SketchStyle = {
+    stroke: "#ff5fb2",
+    fill: "rgba(255,182,214,0.42)",
+    accent: "#ffb200",
+    secondary: "#2ca24f",
+    strokeWidth: 4,
+    scale: 1,
+    stretchX: 1,
+    stretchY: 1,
+    rough: false,
+  };
+
+  if (/big|large|giant|huge/.test(prompt)) style.scale = 1.25;
+  if (/small|tiny|mini/.test(prompt)) style.scale = 0.82;
+  if (/wide|fat|broad/.test(prompt)) style.stretchX = 1.22;
+  if (/tall|long/.test(prompt)) style.stretchY = 1.22;
+  if (/thin|slim|narrow/.test(prompt)) style.stretchX = 0.82;
+  if (/bright|sunny|glowing/.test(prompt)) {
+    style.stroke = "#ff8a00";
+    style.fill = "rgba(255,191,71,0.38)";
+    style.accent = "#ffd84d";
+  }
+  if (/dark|moody|night/.test(prompt)) {
+    style.stroke = "#4b3f72";
+    style.fill = "rgba(75,63,114,0.2)";
+    style.accent = "#2f274d";
+  }
+  if (/pastel|soft/.test(prompt)) {
+    style.stroke = "#d970b7";
+    style.fill = "rgba(255,210,230,0.42)";
+    style.accent = "#ffd166";
+  }
+  if (/blue|azure|sky/.test(prompt)) {
+    style.stroke = "#4d8cff";
+    style.fill = "rgba(137,180,255,0.28)";
+    style.accent = "#8ed2ff";
+  }
+  if (/green|leafy|forest/.test(prompt)) {
+    style.stroke = "#2ca24f";
+    style.fill = "rgba(122,212,139,0.28)";
+    style.accent = "#7ed957";
+    style.secondary = "#1f7a36";
+  }
+  if (/red|crimson|scarlet/.test(prompt)) {
+    style.stroke = "#e84a5f";
+    style.fill = "rgba(232,74,95,0.22)";
+    style.accent = "#ff9f43";
+  }
+  if (/gold|golden|yellow/.test(prompt) || /sun/.test(message)) {
+    style.stroke = "#ffb200";
+    style.fill = "rgba(255,214,82,0.3)";
+    style.accent = "#ffcf33";
+  }
+  if (/rough|messy|sketchy|hand drawn/.test(prompt)) {
+    style.rough = true;
+    style.strokeWidth += 2;
+  }
+  if (/bold|thick/.test(prompt)) style.strokeWidth += 2;
+  if (/delicate|fine/.test(prompt)) style.strokeWidth = Math.max(2, style.strokeWidth - 1);
+
+  return style;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function withAlpha(color: string, alpha: number) {
+  const hex = color.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return `rgba(255,95,178,${alpha})`;
+  }
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+const SKETCH_LEXICON: SketchLexiconEntry[] = [
+  { nouns: ["flower", "petal", "daisy", "rose", "tulip", "sunflower"], build: buildFlowerSketchPlan, message: "flower" },
+  { nouns: ["heart", "love"], build: buildHeartSketchPlan, message: "heart" },
+  { nouns: ["sun", "sunshine"], build: buildSunSketchPlan, message: "sun" },
+  { nouns: ["star", "sparkle"], build: buildStarSketchPlan, message: "star" },
+  { nouns: ["cloud", "puff", "cumulus"], build: buildCloudSketchPlan, message: "cloud" },
+  { nouns: ["moon", "crescent"], build: buildMoonSketchPlan, message: "moon" },
+  { nouns: ["tree", "oak", "pine"], build: buildTreeSketchPlan, message: "tree" },
+  { nouns: ["leaf", "leaves", "frond"], build: buildLeafSketchPlan, message: "leaf" },
+  { nouns: ["apple", "fruit"], build: buildAppleSketchPlan, message: "apple" },
+  { nouns: ["house", "home", "cabin"], build: buildHouseSketchPlan, message: "house" },
+  { nouns: ["mountain", "peak", "hill"], build: buildMountainSketchPlan, message: "mountain" },
+  { nouns: ["rainbow", "arc"], build: buildRainbowSketchPlan, message: "rainbow" },
+  { nouns: ["balloon"], build: buildBalloonSketchPlan, message: "balloon" },
+  { nouns: ["speech bubble", "chat bubble", "bubble"], build: buildSpeechBubbleSketchPlan, message: "speech bubble" },
+  { nouns: ["lightning", "bolt", "thunderbolt"], build: buildLightningSketchPlan, message: "lightning" },
+  { nouns: ["book", "notebook", "journal"], build: buildBookSketchPlan, message: "book" },
+  { nouns: ["fish"], build: buildFishSketchPlan, message: "fish" },
+  { nouns: ["butterfly"], build: buildButterflySketchPlan, message: "butterfly" },
+  { nouns: ["smiley", "smile", "face"], build: buildSmileySketchPlan, message: "smiley" },
+  { nouns: ["flag", "banner", "pennant"], build: buildFlagSketchPlan, message: "flag" },
+  { nouns: ["rocket", "spaceship"], build: buildRocketSketchPlan, message: "rocket" },
+];
