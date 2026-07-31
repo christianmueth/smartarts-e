@@ -30,14 +30,13 @@ const LOCAL_EDITOR_PROJECTS_STORAGE_KEY = "easy-easel-local-projects-v1";
 
 export default function EasyEaselEditor({ initialAssets, initialProjects, initialProject }: Props) {
   const initialDocument = initialProject?.canvas || createEmptyEditorDocument();
-  const initialSelectionId = getTopLayerId(initialDocument);
   const [assets, setAssets] = useState(initialAssets);
   const [projects, setProjects] = useState(initialProjects);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(initialProject?.id || null);
   const [projectName, setProjectName] = useState(initialProject?.name || "Untitled project");
   const [document, setDocument] = useState<EditorCanvasDocument>(initialDocument);
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(initialSelectionId);
-  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>(initialSelectionId ? [initialSelectionId] : []);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [tool, setTool] = useState<Tool>("select");
   const [strokeColor, setStrokeColor] = useState("#ff5fb2");
   const [fillColor, setFillColor] = useState("#ffe09c");
@@ -187,7 +186,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   function resetDocument(nextDocument: EditorCanvasDocument, options?: { selectedLayerId?: string | null; selectedLayerIds?: string[] }) {
     documentRef.current = nextDocument;
     setDocument(nextDocument);
-    const resolved = resolveLayerSelection(nextDocument, options?.selectedLayerIds ?? [], options?.selectedLayerId ?? getTopLayerId(nextDocument));
+    const resolved = resolveLayerSelection(nextDocument, options?.selectedLayerIds ?? [], options?.selectedLayerId ?? null);
     setSelectedLayerIds(resolved.selectedLayerIds);
     setSelectedLayerId(resolved.selectedLayerId);
     setHistoryState({
@@ -1724,7 +1723,7 @@ function resolveLayerSelection(document: EditorCanvasDocument, selectedLayerIds:
   const validIds = Array.from(new Set(selectedLayerIds)).filter((id) => document.layers.some((layer) => layer.id === id));
   const nextPrimaryId = selectedLayerId && validIds.includes(selectedLayerId)
     ? selectedLayerId
-    : validIds[validIds.length - 1] ?? getTopLayerId(document);
+    : validIds[validIds.length - 1] ?? null;
 
   if (!nextPrimaryId) {
     return {
