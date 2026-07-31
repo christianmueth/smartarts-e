@@ -93,7 +93,7 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return llmPlan;
   }
 
-  return buildDeterministicFallbackCanvasPlan({ ...input, prompt });
+  return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), prompt, input.document);
 }
 
 async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -105,7 +105,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
     return null;
   }
 
-  return buildExplanationLayout(input.document, topic, content);
+  return buildExplanationLayout(input.document, topic, content, input.prompt);
 }
 
 async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -191,7 +191,11 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
 
   const sketchEntry = findSketchLexiconEntry(lower);
   if (sketchEntry) {
-    return sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message));
+      return placeGeneratedPlan(
+        sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message)),
+        input.prompt,
+        input.document
+      );
   }
 
   if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
@@ -860,43 +864,9 @@ function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAs
     mode: "canvas",
     assistantMessage: "Translating the prompt into easel markup tools.",
     actions: [
-      {
-        tool: "rect",
-        label: "Prompt box",
-        x,
-        y,
-        width: boxWidth,
-        height: 108,
-        stroke: "#ff8a5b",
-        fill: "rgba(255,241,196,0.58)",
-        strokeWidth: 4,
-      },
-      {
-        tool: "text",
-        label: "Prompt note",
-        text: subject,
-        x: x + 24,
-        y: y + 26,
-        width: boxWidth - 48,
-        fontSize: 36,
-        color: "#7a1f4f",
-      },
-      {
-        tool: "brush",
-        label: "Accent underline",
-        points: [
-          x + 22,
-          y + 86,
-          x + boxWidth * 0.42,
-          y + 90,
-          x + boxWidth * 0.78,
-          y + 84,
-          x + boxWidth - 22,
-          y + 88,
-        ],
-        stroke: "#ff5fb2",
-        strokeWidth: 7,
-      },
+      { tool: "rect", label: "Prompt box", x, y, width: boxWidth, height: 108, stroke: "#ff8a5b", fill: "rgba(255,241,196,0.58)", strokeWidth: 4 },
+      { tool: "text", label: "Prompt note", text: subject, x: x + 24, y: y + 26, width: boxWidth - 48, fontSize: 36, color: "#7a1f4f" },
+      { tool: "brush", label: "Accent underline", points: [x + 22, y + 86, x + boxWidth * 0.42, y + 90, x + boxWidth * 0.78, y + 84, x + boxWidth - 22, y + 88], stroke: "#ff5fb2", strokeWidth: 7 },
     ],
   };
 }
@@ -904,17 +874,19 @@ function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAs
 function buildExplanationLayout(
   document: EaselAssistInput["document"],
   topic: string,
-  content: ExplanationSections
+  content: ExplanationSections,
+  prompt: string
 ): EditorAssistPlan {
   const width = clamp(Math.min(document.width - 80, 760), 320, document.width - 40);
-  const x = clamp(document.width / 2 - width / 2, 20, Math.max(20, document.width - width - 20));
   const title = `Explain: ${toTitleText(topic) || topic}`;
   const summaryLines = splitCanvasText(content.summary, 64);
   const pointLines = content.keyPoints.map((point) => splitCanvasText(`• ${point}`, 62).join("\n"));
   const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
   const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
   const cardHeight = 136 + summaryHeight + pointsHeight;
-  const y = clamp(document.height * 0.08, 24, Math.max(24, document.height - cardHeight - 40));
+  const placement = resolvePlanPlacement(document, prompt, width, cardHeight);
+  const x = placement.x;
+  const y = placement.y;
   const summaryY = y + 96;
   let pointY = summaryY + summaryHeight + 12;
 
@@ -990,6 +962,84 @@ function buildExplanationLayout(
     assistantMessage: `Writing an explanation about ${topic}.`,
     actions,
   };
+}
+
+function placeGeneratedPlan(plan: EditorAssistPlan, prompt: string, document: EaselAssistInput["document"]): EditorAssistPlan {
+  const bounds = getActionBounds(plan.actions);
+  if (!bounds) return plan;
+  const placement = resolvePlanPlacement(document, prompt, bounds.width, bounds.height);
+  const dx = placement.x - bounds.x;
+  const dy = placement.y - bounds.y;
+  return {
+    ...plan,
+    actions: plan.actions.map((action) => ({
+      ...action,
+      x: typeof action.x === "number" ? action.x + dx : action.x,
+      y: typeof action.y === "number" ? action.y + dy : action.y,
+      points: Array.isArray(action.points)
+        ? action.points.map((point, index) => point + (index % 2 === 0 ? dx : dy))
+        : action.points,
+    })),
+  };
+}
+
+function resolvePlanPlacement(document: EaselAssistInput["document"], prompt: string, width: number, height: number) {
+  const padding = 28;
+  const maxX = Math.max(padding, document.width - width - padding);
+  const maxY = Math.max(padding, document.height - height - padding);
+  const location = readRequestedLocation(prompt);
+  if (location) {
+    const x = location.horizontal === "left" ? padding : location.horizontal === "right" ? maxX : (document.width - width) / 2;
+    const y = location.vertical === "top" ? padding : location.vertical === "bottom" ? maxY : (document.height - height) / 2;
+    return { x: Math.round(clamp(x, padding, maxX)), y: Math.round(clamp(y, padding, maxY)) };
+  }
+
+  const seed = hashText(`${prompt}:${document.layerCount}:${document.width}:${document.height}`);
+  const xRatio = (seed % 1000) / 1000;
+  const yRatio = (Math.floor(seed / 1000) % 1000) / 1000;
+  return {
+    x: Math.round(padding + xRatio * (maxX - padding)),
+    y: Math.round(padding + yRatio * (maxY - padding)),
+  };
+}
+
+function readRequestedLocation(prompt: string) {
+  const lower = prompt.toLowerCase();
+  const horizontal = /\b(?:top|upper|bottom|lower)?\s*(?:left|left-hand)\b/.test(lower) ? "left"
+    : /\b(?:top|upper|bottom|lower)?\s*(?:right|right-hand)\b/.test(lower) ? "right"
+      : /\b(?:center|centre|middle)\b/.test(lower) ? "center" : null;
+  const vertical = /\b(?:top|upper)\b/.test(lower) ? "top"
+    : /\b(?:bottom|lower)\b/.test(lower) ? "bottom"
+      : /\b(?:center|centre|middle)\b/.test(lower) ? "center" : null;
+  return horizontal || vertical ? { horizontal: horizontal || "center", vertical: vertical || "center" } : null;
+}
+
+function getActionBounds(actions: EditorAssistAction[]) {
+  const points: Array<{ x: number; y: number }> = [];
+  for (const action of actions) {
+    if (typeof action.x === "number" && typeof action.y === "number") {
+      points.push({ x: action.x, y: action.y }, { x: action.x + (action.width || 0), y: action.y + (action.height || 0) });
+    }
+    if (Array.isArray(action.points)) {
+      for (let index = 0; index < action.points.length - 1; index += 2) {
+        points.push({ x: action.points[index], y: action.points[index + 1] });
+      }
+    }
+  }
+  if (!points.length) return null;
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
+
+function hashText(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  }
+  return hash >>> 0;
 }
 
 function extractRequestedText(prompt: string) {

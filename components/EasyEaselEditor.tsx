@@ -2014,7 +2014,7 @@ function buildLocalCanvasFallbackPlan(
   const target = getAssistTargetBounds(document, selectedLayer);
 
   if (isExplanationFallbackPrompt(prompt)) {
-    return buildExplanationAssistPlan(document, extractExplanationFallbackTopic(prompt) || "this topic");
+    return buildExplanationAssistPlan(document, extractExplanationFallbackTopic(prompt) || "this topic", prompt);
   }
 
   if (/flower/.test(lower)) {
@@ -2162,17 +2162,18 @@ function buildLocalCanvasFallbackPlan(
   };
 }
 
-function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string): EditorAssistPlan {
+function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string, prompt: string): EditorAssistPlan {
   const normalizedTopic = toDisplayFallbackTopic(topic);
   const explanation = buildDeterministicExplanationSections(topic);
   const summaryLines = wrapFallbackText(explanation.summary, 64);
   const pointLines = explanation.keyPoints.map((point) => wrapFallbackText(`• ${point}`, 62).join("\n"));
   const width = Math.max(340, Math.min(document.width - 80, 760));
-  const x = Math.max(20, Math.min(document.width - width - 20, document.width / 2 - width / 2));
   const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
   const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
   const cardHeight = 136 + summaryHeight + pointsHeight;
-  const y = Math.max(24, Math.min(document.height - cardHeight - 40, document.height * 0.08));
+  const placement = resolveFallbackPlacement(document, prompt, width, cardHeight);
+  const x = placement.x;
+  const y = placement.y;
 
   const actions: EditorAssistAction[] = [
     {
@@ -2356,6 +2357,21 @@ function toDisplayFallbackTopic(topic: string) {
   const cleaned = topic.trim();
   if (!cleaned) return "This topic";
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function resolveFallbackPlacement(document: EditorCanvasDocument, prompt: string, width: number, height: number) {
+  const padding = 28;
+  const maxX = Math.max(padding, document.width - width - padding);
+  const maxY = Math.max(padding, document.height - height - padding);
+  const lower = prompt.toLowerCase();
+  const left = /\b(?:top|upper|bottom|lower)?\s*(?:left|left-hand)\b/.test(lower);
+  const right = /\b(?:top|upper|bottom|lower)?\s*(?:right|right-hand)\b/.test(lower);
+  const top = /\b(?:top|upper)\b/.test(lower);
+  const bottom = /\b(?:bottom|lower)\b/.test(lower);
+  const center = /\b(?:center|centre|middle)\b/.test(lower);
+  const x = left ? padding : right ? maxX : center ? (document.width - width) / 2 : padding + Math.random() * (maxX - padding);
+  const y = top ? padding : bottom ? maxY : center ? (document.height - height) / 2 : padding + Math.random() * (maxY - padding);
+  return { x: Math.round(Math.max(padding, Math.min(maxX, x))), y: Math.round(Math.max(padding, Math.min(maxY, y))) };
 }
 
 function buildDeterministicExplanationSections(topic: string) {
