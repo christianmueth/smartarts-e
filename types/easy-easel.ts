@@ -2,6 +2,8 @@ export type EditorAssetType = "upload" | "generated" | "edited";
 
 export type EditorLayerKind = "image" | "text" | "rect" | "ellipse" | "line";
 
+export type EditorAssistTool = "text" | "rect" | "brush" | "eraser";
+
 export type EditorBaseLayer = {
   id: string;
   kind: EditorLayerKind;
@@ -84,6 +86,39 @@ export type EditorCropRect = {
   y: number;
   width: number;
   height: number;
+};
+
+export type EditorAssistSelectedLayer = {
+  id: string;
+  kind: EditorLayerKind;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type EditorAssistAction = {
+  tool: EditorAssistTool;
+  label?: string;
+  text?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fontSize?: number;
+  color?: string;
+  stroke?: string;
+  fill?: string;
+  strokeWidth?: number;
+  points?: number[];
+};
+
+export type EditorAssistPlan = {
+  mode: "canvas" | "image";
+  assistantMessage: string;
+  actions: EditorAssistAction[];
+  imagePrompt?: string;
 };
 
 export function createEmptyEditorDocument(): EditorCanvasDocument {

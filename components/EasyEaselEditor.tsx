@@ -5,6 +5,9 @@ import Konva from "konva";
 import { Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text as KonvaText, Transformer } from "react-konva";
 import { toast } from "sonner";
 import type {
+  EditorAssistAction,
+  EditorAssistPlan,
+  EditorAssistSelectedLayer,
   EditorAsset,
   EditorCanvasDocument,
   EditorCropRect,
@@ -38,6 +41,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [aiPrompt, setAiPrompt] = useState("");
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
+  const [assistantCursor, setAssistantCursor] = useState<{ x: number; y: number; label: string } | null>(null);
   const [historyState, setHistoryState] = useState(() => ({
     snapshots: [serializeDocument(initialProject?.canvas || createEmptyEditorDocument())],
     index: 0,
@@ -422,6 +426,128 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     }
   }
 
+  function buildSelectedLayerForAssist(): EditorAssistSelectedLayer | null {
+    if (!selectedLayer) return null;
+    return {
+      id: selectedLayer.id,
+      kind: selectedLayer.kind,
+      name: selectedLayer.name,
+      x: selectedLayer.x,
+      y: selectedLayer.y,
+      width: selectedLayer.width,
+      height: selectedLayer.height,
+    };
+  }
+
+  function insertGeneratedAssets(nextAssets: EditorAsset[]) {
+    setAssets((current) => [...nextAssets, ...current.filter((asset) => !nextAssets.some((item) => item.id === asset.id))]);
+    nextAssets.forEach((asset, index) => {
+      const naturalWidth = asset.width || 1024;
+      const naturalHeight = asset.height || 1024;
+      const width = Math.min(420, naturalWidth);
+      const height = Math.max(120, Math.round(naturalHeight * (width / naturalWidth)));
+      const imageLayer: EditorImageLayer = {
+        id: createId("image"),
+        kind: "image",
+        name: asset.title || "AI image",
+        x: 80 + index * 30,
+        y: 80 + index * 30,
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        assetId: asset.id,
+        src: asset.imageUrl,
+        brightness: 0,
+        contrast: 0,
+      };
+      documentRef.current = {
+        ...documentRef.current,
+        layers: [...documentRef.current.layers, imageLayer],
+      };
+    });
+    commitDocument(documentRef.current, getTopLayerId(documentRef.current));
+  }
+
+  async function requestEaselAssistPlan(prompt: string) {
+    const response = await fetch("/api/easel/assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        document: {
+          width: documentRef.current.width,
+          height: documentRef.current.height,
+          backgroundColor: documentRef.current.backgroundColor,
+          layerCount: documentRef.current.layers.length,
+        },
+        selectedLayer: buildSelectedLayerForAssist(),
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok || !data?.plan) {
+      throw new Error(data?.error || "Easel assist failed.");
+    }
+    return data.plan as EditorAssistPlan;
+  }
+
+  async function requestGeneratedAssets(prompt: string) {
+    const response = await fetch("/api/images/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, count: 1 }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok || !Array.isArray(data?.assets)) {
+      throw new Error(data?.error || "Image generation failed.");
+    }
+    return data.assets as EditorAsset[];
+  }
+
+  async function animateAssistantCursor(action: EditorAssistAction) {
+    const points = cursorWaypointsForAction(action);
+    if (!points.length) return;
+
+    for (const point of points) {
+      setAssistantCursor({
+        x: point.x,
+        y: point.y,
+        label: action.label || action.tool,
+      });
+      await wait(action.tool === "text" ? 170 : 120);
+    }
+  }
+
+  async function replayAssistActions(actions: EditorAssistAction[]) {
+    const previousTool = tool;
+    let workingDocument = documentRef.current;
+    let lastLayerId = getTopLayerId(workingDocument);
+
+    for (const action of actions) {
+      setTool(action.tool === "brush" || action.tool === "eraser" || action.tool === "rect" || action.tool === "text"
+        ? action.tool
+        : "select");
+      await animateAssistantCursor(action);
+
+      const layer = buildLayerFromAssistAction(action, workingDocument);
+      if (!layer) continue;
+
+      workingDocument = {
+        ...workingDocument,
+        layers: [...workingDocument.layers, layer],
+      };
+      documentRef.current = workingDocument;
+      setDocument(workingDocument);
+      setSelectedLayerId(layer.id);
+      lastLayerId = layer.id;
+      await wait(140);
+    }
+
+    setAssistantCursor(null);
+    setTool(previousTool);
+    commitDocument(workingDocument, lastLayerId);
+  }
+
   async function runAi(kind: "generate" | "edit" | "variation") {
     const trimmedPrompt = aiPrompt.trim();
     if (!trimmedPrompt) {
@@ -435,26 +561,40 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     }
 
     const toastId = toast.loading(kind === "generate"
-      ? "Generating image..."
+      ? "Planning easel action..."
       : kind === "variation"
         ? "Creating variations..."
         : "Applying AI edit...");
     setBusyAction(kind);
     try {
-      const response = await fetch(kind === "generate" ? "/api/images/generate" : "/api/images/edit", {
+      if (kind === "generate") {
+        const plan = await requestEaselAssistPlan(trimmedPrompt);
+        if (plan.mode === "canvas" && plan.actions.length) {
+          await replayAssistActions(plan.actions);
+          setAiPrompt("");
+          toast.success(plan.assistantMessage || "Applied easel tools.", { id: toastId });
+          return;
+        }
+
+        const nextAssets = await requestGeneratedAssets(plan.imagePrompt || trimmedPrompt);
+        insertGeneratedAssets(nextAssets);
+        setAiPrompt("");
+        toast.success(plan.assistantMessage || "Image added as a new layer.", { id: toastId });
+        return;
+      }
+
+      const response = await fetch("/api/images/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(kind === "generate"
-          ? { prompt: trimmedPrompt, count: 1 }
-          : {
-              assetId: selectedImageLayer?.assetId,
-              sourceUrl: selectedImageLayer?.src,
-              sourceTitle: selectedImageLayer?.name,
-              prompt: kind === "variation"
-                ? `${trimmedPrompt}. Create 4 variations and keep the original subject readable.`
-                : trimmedPrompt,
-              count: kind === "variation" ? 4 : 1,
-            }),
+        body: JSON.stringify({
+          assetId: selectedImageLayer?.assetId,
+          sourceUrl: selectedImageLayer?.src,
+          sourceTitle: selectedImageLayer?.name,
+          prompt: kind === "variation"
+            ? `${trimmedPrompt}. Create 4 variations and keep the original subject readable.`
+            : trimmedPrompt,
+          count: kind === "variation" ? 4 : 1,
+        }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || !Array.isArray(data?.assets)) {
@@ -462,33 +602,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       }
 
       const nextAssets = data.assets as EditorAsset[];
-      setAssets((current) => [...nextAssets, ...current.filter((asset) => !nextAssets.some((item) => item.id === asset.id))]);
-      nextAssets.forEach((asset, index) => {
-        const naturalWidth = asset.width || 1024;
-        const naturalHeight = asset.height || 1024;
-        const width = Math.min(420, naturalWidth);
-        const height = Math.max(120, Math.round(naturalHeight * (width / naturalWidth)));
-        const imageLayer: EditorImageLayer = {
-          id: createId("image"),
-          kind: "image",
-          name: asset.title || "AI image",
-          x: 80 + index * 30,
-          y: 80 + index * 30,
-          width,
-          height,
-          rotation: 0,
-          opacity: 1,
-          assetId: asset.id,
-          src: asset.imageUrl,
-          brightness: 0,
-          contrast: 0,
-        };
-        documentRef.current = {
-          ...documentRef.current,
-          layers: [...documentRef.current.layers, imageLayer],
-        };
-      });
-      commitDocument(documentRef.current, getTopLayerId(documentRef.current));
+      insertGeneratedAssets(nextAssets);
       setAiPrompt("");
       toast.success(kind === "generate"
         ? "Image added as a new layer."
@@ -496,6 +610,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
           ? "Variations added as new layers."
           : "Edited image added as a new layer.", { id: toastId });
     } catch (error) {
+      setAssistantCursor(null);
       toast.error(error instanceof Error ? error.message : "AI request failed.", { id: toastId });
     } finally {
       setBusyAction(null);
@@ -762,6 +877,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                         fill="rgba(255,95,178,0.12)"
                       />
                     ) : null}
+                    {assistantCursor ? (
+                      <Group x={assistantCursor.x} y={assistantCursor.y} listening={false}>
+                        <Rect x={12} y={-34} width={96} height={24} cornerRadius={12} fill="#7a1f4f" opacity={0.92} />
+                        <KonvaText x={22} y={-28} width={76} text={assistantCursor.label} fontSize={12} fontFamily="Manrope" fill="#fff7fb" />
+                        <Line points={[0, 0, 10, -12, 14, -5]} stroke="#7a1f4f" strokeWidth={4} lineCap="round" lineJoin="round" />
+                        <Rect x={-6} y={-6} width={12} height={12} cornerRadius={6} fill="#ff5fb2" stroke="#ffffff" strokeWidth={2} />
+                      </Group>
+                    ) : null}
                     <Transformer ref={transformerRef} rotateEnabled anchorCornerRadius={12} borderStroke="#ff5fb2" anchorFill="#fff7fb" anchorStroke="#ff5fb2" />
                   </Layer>
                 </Stage>
@@ -871,17 +994,17 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               </details>
 
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI editing prompt</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI easel prompt</summary>
                 <div className="mt-3 space-y-3">
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Describe the change you want."
+                    placeholder="Write on the board, highlight something, underline a layer, erase a region, or ask for a new image."
                     className="min-h-[150px] w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button type="button" onClick={() => void runAi("generate")} disabled={busyAction !== null} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                      {busyAction === "generate" ? "Generating..." : "Generate new image"}
+                      {busyAction === "generate" ? "Running..." : "Run on easel"}
                     </button>
                     <button type="button" onClick={() => void runAi("edit")} disabled={busyAction !== null} className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-medium text-pink-700 disabled:opacity-60">
                       {busyAction === "edit" ? "Editing..." : "Apply to selected"}
@@ -891,7 +1014,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     </button>
                   </div>
                   <p className="text-xs leading-6 text-pink-500">
-                    Remove or replace backgrounds, add or remove objects, change style, expand the image, improve lighting, or create a new version. AI results always come back as new layers.
+                    Prompts can write text, draw highlights, add rectangles, brush marks, or erase directly on the easel. If the request needs a brand-new image, it will still come back as a new layer.
                   </p>
                 </div>
               </details>
@@ -1131,4 +1254,104 @@ function shiftPoints(points: number[], xOffset: number, yOffset: number) {
     nextPoints[index + 1] -= yOffset;
   }
   return nextPoints;
+}
+
+function buildLayerFromAssistAction(action: EditorAssistAction, document: EditorCanvasDocument): EditorLayer | null {
+  if (action.tool === "text") {
+    const text = String(action.text || "").trim();
+    if (!text) return null;
+    return {
+      id: createId("text"),
+      kind: "text",
+      name: action.label || "Text",
+      x: Number(action.x || 0),
+      y: Number(action.y || 0),
+      width: Math.max(120, Math.round(Number(action.width || 320))),
+      height: Math.max(48, Math.round(Number(action.fontSize || 42) * 1.8)),
+      rotation: 0,
+      opacity: 1,
+      text,
+      fill: String(action.color || "#7a1f4f"),
+      fontSize: Math.max(18, Math.round(Number(action.fontSize || 42))),
+      fontFamily: "Manrope",
+    };
+  }
+
+  if (action.tool === "rect") {
+    return {
+      id: createId("rect"),
+      kind: "rect",
+      name: action.label || "Rectangle",
+      x: Number(action.x || 0),
+      y: Number(action.y || 0),
+      width: Math.max(8, Math.round(Number(action.width || 220))),
+      height: Math.max(8, Math.round(Number(action.height || 120))),
+      rotation: 0,
+      opacity: 1,
+      fill: String(action.fill || "rgba(255,95,178,0.12)"),
+      stroke: String(action.stroke || "#ff5fb2"),
+      strokeWidth: Math.max(1, Math.round(Number(action.strokeWidth || 4))),
+    };
+  }
+
+  if (action.tool === "brush" || action.tool === "eraser") {
+    const points = Array.isArray(action.points)
+      ? action.points.map((point) => Number(point)).filter((point) => Number.isFinite(point))
+      : [];
+    if (points.length < 4) return null;
+    return {
+      id: createId(action.tool === "eraser" ? "erase" : "brush"),
+      kind: "line",
+      name: action.label || (action.tool === "eraser" ? "Erase" : "Brush stroke"),
+      x: 0,
+      y: 0,
+      width: document.width,
+      height: document.height,
+      rotation: 0,
+      opacity: 1,
+      points,
+      stroke: action.tool === "eraser" ? "#ffffff" : String(action.stroke || "#ff8a5b"),
+      strokeWidth: Math.max(2, Math.round(Number(action.strokeWidth || (action.tool === "eraser" ? 24 : 8)))),
+      compositeMode: action.tool === "eraser" ? "destination-out" : "source-over",
+    };
+  }
+
+  return null;
+}
+
+function cursorWaypointsForAction(action: EditorAssistAction) {
+  if (action.tool === "brush" || action.tool === "eraser") {
+    const points = Array.isArray(action.points) ? action.points : [];
+    const waypoints: Array<{ x: number; y: number }> = [];
+    for (let index = 0; index < points.length - 1; index += 2) {
+      waypoints.push({ x: Number(points[index]), y: Number(points[index + 1]) });
+    }
+    return waypoints;
+  }
+
+  if (action.tool === "rect") {
+    const x = Number(action.x || 0);
+    const y = Number(action.y || 0);
+    const width = Number(action.width || 0);
+    const height = Number(action.height || 0);
+    return [
+      { x, y },
+      { x: x + width / 2, y: y + height / 2 },
+    ];
+  }
+
+  if (action.tool === "text") {
+    const x = Number(action.x || 0);
+    const y = Number(action.y || 0);
+    const width = Number(action.width || 0);
+    return [{ x: x + Math.max(24, width / 2), y: y + 20 }];
+  }
+
+  return [];
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(() => resolve(), ms);
+  });
 }
