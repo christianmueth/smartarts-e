@@ -31,6 +31,16 @@ type Props = {
 };
 
 const LOCAL_EDITOR_PROJECTS_STORAGE_KEY = "easy-easel-local-projects-v1";
+const IMAGE_AI_ACTIONS = [
+  ["Remove background", "Remove the background while preserving the main subject."],
+  ["Remove object", "Remove the distracting object and reconstruct a natural background."],
+  ["Replace object", "Replace the selected object according to this instruction."],
+  ["Expand image", "Expand the image beyond its current edges while matching the existing scene."],
+  ["Inpaint", "Inpaint the marked area according to this instruction."],
+  ["Restyle", "Restyle this image with a polished watercolor or oil-painting aesthetic while preserving the subject."],
+  ["Upscale", "Upscale the image and preserve its important details."],
+  ["Relight / enhance", "Improve the lighting, color balance, and detail while preserving the image."],
+] as const;
 
 export default function EasyEaselEditor({ initialAssets, initialProjects, initialProject }: Props) {
   const initialDocument = initialProject?.canvas || createEmptyEditorDocument();
@@ -1028,8 +1038,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     }
   }
 
-  async function runAi(kind: "generate" | "edit" | "variation") {
-    const trimmedPrompt = aiPrompt.trim();
+  async function runAi(kind: "generate" | "edit" | "variation", promptOverride?: string) {
+    const trimmedPrompt = (promptOverride ?? aiPrompt).trim();
     if (!trimmedPrompt) {
       toast.error("Describe the change you want.");
       return;
@@ -1685,18 +1695,21 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               </details>
 
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI easel prompt</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI actions</summary>
                 <div className="mt-3 space-y-3">
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Write on the board, explain a topic, highlight something, circle a layer, point at an object, brush a mark, or erase a region."
-                    className="min-h-[150px] w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
+                    placeholder="Describe the edit. Select an image layer, then choose an action."
+                    className="min-h-20 w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
-                  <div>
-                    <button type="button" onClick={() => void runAi("generate")} disabled={busyAction !== null} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                      {busyAction === "generate" ? "Running..." : "Run on easel"}
-                    </button>
+                  <p className="text-xs text-pink-600">{selectedImageLayer ? `Selected: ${selectedImageLayer.name}` : "Select an image layer to use AI actions."}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {IMAGE_AI_ACTIONS.map(([label, instruction]) => (
+                      <button key={label} type="button" onClick={() => void runAi("edit", aiPrompt.trim() || instruction)} disabled={busyAction !== null || !selectedImageLayer} className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-left text-xs font-medium text-pink-700 hover:bg-pink-50 disabled:opacity-50">
+                        {busyAction === "edit" ? "Working..." : label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </details>

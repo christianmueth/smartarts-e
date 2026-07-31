@@ -14,9 +14,6 @@ export default function NavBarClerkControls() {
         <Link href="/editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Easy Easel
         </Link>
-        <Link href="/e-editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
-          E-Editor
-        </Link>
         <Link href="/app/billing" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Billing
         </Link>
@@ -29,9 +26,6 @@ export default function NavBarClerkControls() {
       <SignedIn>
         <Link href="/editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Easy Easel
-        </Link>
-        <Link href="/e-editor" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
-          E-Editor
         </Link>
         <Link href="/library" className="rounded-full border border-pink-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-pink-700 hover:bg-pink-50">
           Library
