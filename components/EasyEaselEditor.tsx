@@ -1013,7 +1013,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       id,
       name: input.name,
       canvas: input.canvas,
-      previewUrl: input.previewUrl,
+      // PNG data URLs quickly exhaust localStorage. Remote projects retain previews;
+      // device-only recovery saves keep the editable document instead.
+      previewUrl: null,
       createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1021,7 +1023,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     writeLocalEditorProjects([
       project,
       ...currentProjects.filter((item) => item.id !== project.id),
-    ].slice(0, 24));
+    ]);
 
     return project;
   }
@@ -1680,7 +1682,30 @@ function writeLocalEditorProjects(projects: EditorProjectDetail[]) {
     return;
   }
 
-  window.localStorage.setItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY, JSON.stringify(projects.slice(0, 24)));
+  const compactProjects = projects.slice(0, 6).map((project) => ({
+    ...project,
+    previewUrl: null,
+  }));
+
+  try {
+    window.localStorage.setItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY, JSON.stringify(compactProjects));
+  } catch (error) {
+    if (!isStorageQuotaError(error)) {
+      throw error;
+    }
+
+    // Clear legacy entries that included large canvas PNG previews, then retry
+    // with only the most recent editable project.
+    try {
+      window.localStorage.removeItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY);
+      window.localStorage.setItem(LOCAL_EDITOR_PROJECTS_STORAGE_KEY, JSON.stringify(compactProjects.slice(0, 1)));
+    } catch (retryError) {
+      if (isStorageQuotaError(retryError)) {
+        throw new Error("This canvas is too large to save locally. Save a smaller canvas or reconnect project storage.");
+      }
+      throw retryError;
+    }
+  }
 }
 
 function normalizeStoredEditorProject(value: unknown) {
@@ -1717,6 +1742,12 @@ function mergeProjectSummaries(current: EditorProjectSummary[], incoming: Editor
 
 function isLocalEditorProjectId(projectId: string | null | undefined) {
   return Boolean(projectId && projectId.startsWith("local-"));
+}
+
+function isStorageQuotaError(error: unknown) {
+  const name = String((error as { name?: unknown } | null)?.name || "");
+  const message = error instanceof Error ? error.message : String(error || "");
+  return name === "QuotaExceededError" || /exceeded the quota|quota exceeded/i.test(message);
 }
 
 function resolveLayerSelection(document: EditorCanvasDocument, selectedLayerIds: string[], selectedLayerId: string | null | undefined) {
