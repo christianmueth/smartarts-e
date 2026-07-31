@@ -109,6 +109,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
 }
 
 async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
+  const wantsDoodle = isDoodlePrompt(input.prompt);
   const selectedLayer = input.selectedLayer
     ? {
         id: input.selectedLayer.id,
@@ -144,7 +145,10 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
           "You are an Easy Easel canvas assistant.",
           "Convert the prompt into direct easel tool actions only.",
           "Always use mode=canvas.",
-          "Return 1-4 concrete actions using only text, rect, ellipse, arrow, brush, or eraser.",
+          "Use only text, rect, ellipse, arrow, brush, or eraser.",
+          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 4-12 actions.",
+          "For drawings, combine brush strokes with rects or ellipses where useful; use text only for a requested label, never as a substitute for the drawing.",
+          "Every brush action needs an ordered polyline of at least 3 points, and every shape needs x, y, width, and height.",
           "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
           "If the request is too vague for a precise drawing, choose a minimal helpful markup action rather than switching modes.",
@@ -181,7 +185,11 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
   }
 
   const parsed = safeJsonParse(result.content);
-  return normalizeAssistPlan(parsed, input.document);
+  const plan = normalizeAssistPlan(parsed, input.document);
+  if (wantsDoodle && (!plan || !plan.actions.some((action) => action.tool === "brush" || action.tool === "rect" || action.tool === "ellipse"))) {
+    return null;
+  }
+  return plan;
 }
 
 function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | null {
@@ -885,6 +893,9 @@ function buildCarSketchPlan(input: EaselAssistInput, style: SketchStyle): Editor
 }
 
 function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAssistPlan {
+  if (isDoodlePrompt(input.prompt)) {
+    return buildGenericDoodleFallbackPlan(input);
+  }
   const subject = extractSubjectLabel(input.prompt) || "Canvas note";
   const boxWidth = clamp(Math.max(260, subject.length * 20 + 120), 260, Math.max(260, input.document.width - 80));
   const x = clamp(input.document.width / 2 - boxWidth / 2, 24, Math.max(24, input.document.width - boxWidth - 24));
@@ -897,6 +908,27 @@ function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAs
       { tool: "rect", label: "Prompt box", x, y, width: boxWidth, height: 108, stroke: "#ff8a5b", fill: "rgba(255,241,196,0.58)", strokeWidth: 4 },
       { tool: "text", label: "Prompt note", text: subject, x: x + 24, y: y + 26, width: boxWidth - 48, fontSize: 36, color: "#7a1f4f" },
       { tool: "brush", label: "Accent underline", points: [x + 22, y + 86, x + boxWidth * 0.42, y + 90, x + boxWidth * 0.78, y + 84, x + boxWidth - 22, y + 88], stroke: "#ff5fb2", strokeWidth: 7 },
+    ],
+  };
+}
+
+function buildGenericDoodleFallbackPlan(input: EaselAssistInput): EditorAssistPlan {
+  const subject = extractSubjectLabel(input.prompt) || "Doodle";
+  const seed = hashText(input.prompt);
+  const centerX = input.document.width * (0.32 + (seed % 360) / 1000);
+  const centerY = input.document.height * (0.3 + (Math.floor(seed / 360) % 280) / 1000);
+  const size = Math.min(input.document.width, input.document.height) * 0.2;
+  const stroke = ["#ff5fb2", "#4d8cff", "#2ca24f", "#e84a5f"][seed % 4];
+  const accent = ["#ffb200", "#ff8a5b", "#5abf9a", "#8e6cff"][Math.floor(seed / 7) % 4];
+
+  return {
+    mode: "canvas",
+    assistantMessage: `Doodling ${subject} with easel tools.`,
+    actions: [
+      { tool: "ellipse", label: "Doodle form", x: centerX - size * 0.56, y: centerY - size * 0.5, width: size * 1.12, height: size, stroke, fill: withAlpha(stroke, 0.16), strokeWidth: 5 },
+      { tool: "brush", label: "Doodle contour", points: [centerX - size * 0.5, centerY + size * 0.12, centerX - size * 0.24, centerY - size * 0.54, centerX + size * 0.28, centerY - size * 0.44, centerX + size * 0.52, centerY + size * 0.1, centerX + size * 0.1, centerY + size * 0.48, centerX - size * 0.5, centerY + size * 0.12], stroke, strokeWidth: 6 },
+      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.26, centerY, centerX, centerY - size * 0.2, centerX + size * 0.26, centerY], stroke: accent, strokeWidth: 5 },
+      { tool: "ellipse", label: "Doodle accent", x: centerX - size * 0.12, y: centerY + size * 0.1, width: size * 0.24, height: size * 0.18, stroke: accent, fill: withAlpha(accent, 0.32), strokeWidth: 3 },
     ],
   };
 }
@@ -1067,6 +1099,10 @@ function extractExplanationTopic(prompt: string) {
 
 function isExplanationPrompt(prompt: string) {
   return /^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\b/i.test(prompt.trim());
+}
+
+function isDoodlePrompt(prompt: string) {
+  return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
 }
 
 function extractSubjectLabel(prompt: string) {

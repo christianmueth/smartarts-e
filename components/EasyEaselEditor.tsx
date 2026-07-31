@@ -2224,6 +2224,10 @@ function buildLocalCanvasFallbackPlan(
     };
   }
 
+  if (/\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/.test(lower)) {
+    return buildGenericDoodleAssistPlan(prompt, document);
+  }
+
   const text = extractFallbackText(prompt);
   const width = Math.max(220, Math.min(document.width - 60, text.length * 22 + 120));
   const x = Math.max(24, Math.min(document.width - width - 24, document.width / 2 - width / 2));
@@ -2414,6 +2418,34 @@ function buildCarAssistActions(document: EditorCanvasDocument): EditorAssistActi
     { tool: "ellipse", label: "Left hub", x: leftWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
     { tool: "ellipse", label: "Right hub", x: rightWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
   ];
+}
+
+function buildGenericDoodleAssistPlan(prompt: string, document: EditorCanvasDocument): EditorAssistPlan {
+  const subject = extractFallbackText(prompt);
+  const seed = hashFallbackText(prompt);
+  const centerX = document.width * (0.32 + (seed % 360) / 1000);
+  const centerY = document.height * (0.3 + (Math.floor(seed / 360) % 280) / 1000);
+  const size = Math.min(document.width, document.height) * 0.2;
+  const stroke = ["#ff5fb2", "#4d8cff", "#2ca24f", "#e84a5f"][seed % 4];
+  const accent = ["#ffb200", "#ff8a5b", "#5abf9a", "#8e6cff"][Math.floor(seed / 7) % 4];
+  return {
+    mode: "canvas",
+    assistantMessage: `Doodling ${subject} with easel tools.`,
+    actions: [
+      { tool: "ellipse", label: "Doodle form", x: centerX - size * 0.56, y: centerY - size * 0.5, width: size * 1.12, height: size, stroke, fill: "rgba(255,95,178,0.16)", strokeWidth: 5 },
+      { tool: "brush", label: "Doodle contour", points: [centerX - size * 0.5, centerY + size * 0.12, centerX - size * 0.24, centerY - size * 0.54, centerX + size * 0.28, centerY - size * 0.44, centerX + size * 0.52, centerY + size * 0.1, centerX + size * 0.1, centerY + size * 0.48, centerX - size * 0.5, centerY + size * 0.12], stroke, strokeWidth: 6 },
+      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.26, centerY, centerX, centerY - size * 0.2, centerX + size * 0.26, centerY], stroke: accent, strokeWidth: 5 },
+      { tool: "ellipse", label: "Doodle accent", x: centerX - size * 0.12, y: centerY + size * 0.1, width: size * 0.24, height: size * 0.18, stroke: accent, fill: "rgba(255,178,0,0.32)", strokeWidth: 3 },
+    ],
+  };
+}
+
+function hashFallbackText(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
 function extractFallbackText(prompt: string) {
