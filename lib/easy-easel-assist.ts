@@ -111,6 +111,10 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return llmPlan;
   }
 
+  if (isDoodlePrompt(prompt)) {
+    throw new Error("General drawing is unavailable because the configured AI model could not return a valid object plan. Please restore the model provider and try again.");
+  }
+
   return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), prompt, input.document);
 }
 
