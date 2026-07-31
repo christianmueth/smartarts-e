@@ -856,6 +856,34 @@ function buildRocketSketchPlan(input: EaselAssistInput, style: SketchStyle): Edi
   };
 }
 
+function buildCarSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.4;
+  const bodyWidth = 260 * style.scale * style.stretchX;
+  const bodyHeight = 88 * style.scale * style.stretchY;
+  const wheelSize = 58 * style.scale;
+  const bodyX = centerX - bodyWidth / 2;
+  const bodyY = centerY;
+  const wheelY = bodyY + bodyHeight - wheelSize * 0.42;
+  const leftWheelX = bodyX + bodyWidth * 0.18;
+  const rightWheelX = bodyX + bodyWidth * 0.66;
+  const roofY = bodyY - 76 * style.scale;
+
+  return {
+    mode: "canvas",
+    assistantMessage: "Doodling a car with easel tools.",
+    actions: [
+      { tool: "rect", label: "Car body", x: bodyX, y: bodyY, width: bodyWidth, height: bodyHeight, stroke: style.stroke, fill: style.fill, strokeWidth: style.strokeWidth },
+      { tool: "brush", label: "Car roof", points: [bodyX + bodyWidth * 0.22, bodyY, bodyX + bodyWidth * 0.36, roofY, bodyX + bodyWidth * 0.68, roofY, bodyX + bodyWidth * 0.82, bodyY], stroke: style.stroke, strokeWidth: Math.max(5, style.strokeWidth + 1) },
+      { tool: "brush", label: "Bumper", points: [bodyX + 12 * style.scale, bodyY + bodyHeight * 0.72, bodyX - 12 * style.scale, bodyY + bodyHeight * 0.76, bodyX + 12 * style.scale, bodyY + bodyHeight * 0.84], stroke: style.accent, strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Left wheel", x: leftWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: style.secondary, fill: withAlpha(style.secondary, 0.3), strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Right wheel", x: rightWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: style.secondary, fill: withAlpha(style.secondary, 0.3), strokeWidth: Math.max(4, style.strokeWidth) },
+      { tool: "ellipse", label: "Left hub", x: leftWheelX + wheelSize * 0.32, y: wheelY + wheelSize * 0.32, width: wheelSize * 0.36, height: wheelSize * 0.36, stroke: style.accent, fill: withAlpha(style.accent, 0.45), strokeWidth: 2 },
+      { tool: "ellipse", label: "Right hub", x: rightWheelX + wheelSize * 0.32, y: wheelY + wheelSize * 0.32, width: wheelSize * 0.36, height: wheelSize * 0.36, stroke: style.accent, fill: withAlpha(style.accent, 0.45), strokeWidth: 2 },
+    ],
+  };
+}
+
 function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAssistPlan {
   const subject = extractSubjectLabel(input.prompt) || "Canvas note";
   const boxWidth = clamp(Math.max(260, subject.length * 20 + 120), 260, Math.max(260, input.document.width - 80));
@@ -1555,4 +1583,5 @@ const SKETCH_LEXICON: SketchLexiconEntry[] = [
   { nouns: ["smiley", "smile", "face"], build: buildSmileySketchPlan, message: "smiley" },
   { nouns: ["flag", "banner", "pennant"], build: buildFlagSketchPlan, message: "flag" },
   { nouns: ["rocket", "spaceship"], build: buildRocketSketchPlan, message: "rocket" },
+  { nouns: ["car", "automobile", "vehicle", "sedan"], build: buildCarSketchPlan, message: "car" },
 ];

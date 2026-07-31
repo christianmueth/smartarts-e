@@ -2135,6 +2135,14 @@ function buildLocalCanvasFallbackPlan(
     };
   }
 
+  if (/\b(car|automobile|vehicle|sedan)\b/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Doodling a car with easel tools.",
+      actions: buildCarAssistActions(document),
+    };
+  }
+
   if (selectedLayer && /(highlight|box|outline|frame)/.test(lower)) {
     return {
       mode: "canvas",
@@ -2383,6 +2391,28 @@ function buildSunAssistActions(document: EditorCanvasDocument): EditorAssistActi
       stroke: "#ffb200",
       strokeWidth: 6,
     },
+  ];
+}
+
+function buildCarAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.4;
+  const bodyWidth = 260;
+  const bodyHeight = 88;
+  const wheelSize = 58;
+  const bodyX = centerX - bodyWidth / 2;
+  const bodyY = centerY;
+  const wheelY = bodyY + bodyHeight - wheelSize * 0.42;
+  const leftWheelX = bodyX + bodyWidth * 0.18;
+  const rightWheelX = bodyX + bodyWidth * 0.66;
+  return [
+    { tool: "rect", label: "Car body", x: bodyX, y: bodyY, width: bodyWidth, height: bodyHeight, stroke: "#e84a5f", fill: "rgba(232,74,95,0.22)", strokeWidth: 5 },
+    { tool: "brush", label: "Car roof", points: [bodyX + bodyWidth * 0.22, bodyY, bodyX + bodyWidth * 0.36, bodyY - 76, bodyX + bodyWidth * 0.68, bodyY - 76, bodyX + bodyWidth * 0.82, bodyY], stroke: "#e84a5f", strokeWidth: 6 },
+    { tool: "brush", label: "Bumper", points: [bodyX + 12, bodyY + bodyHeight * 0.72, bodyX - 12, bodyY + bodyHeight * 0.76, bodyX + 12, bodyY + bodyHeight * 0.84], stroke: "#ffb200", strokeWidth: 5 },
+    { tool: "ellipse", label: "Left wheel", x: leftWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: "#3d4655", fill: "rgba(61,70,85,0.3)", strokeWidth: 5 },
+    { tool: "ellipse", label: "Right wheel", x: rightWheelX, y: wheelY, width: wheelSize, height: wheelSize, stroke: "#3d4655", fill: "rgba(61,70,85,0.3)", strokeWidth: 5 },
+    { tool: "ellipse", label: "Left hub", x: leftWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
+    { tool: "ellipse", label: "Right hub", x: rightWheelX + 19, y: wheelY + 19, width: 20, height: 20, stroke: "#ffb200", fill: "rgba(255,178,0,0.35)", strokeWidth: 2 },
   ];
 }
 
