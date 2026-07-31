@@ -26,8 +26,8 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.58, 2.15, (pixel) => isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.62, 1.6, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.58, 1.85, (pixel) => isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.66, 1.4, (pixel) => !isBackgroundPixel(pixel, backgroundColors));
   appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
@@ -47,7 +47,8 @@ function appendPass(
   include: (pixel: Pixel, x: number, y: number) => boolean
 ) {
   for (let y = 0; y < sampling.rows; y += stride) {
-    for (let x = 0; x < sampling.columns; x += stride) {
+    const rowOffset = (Math.floor(y / stride) % 2) * Math.max(1, Math.floor(stride / 2));
+    for (let x = rowOffset; x < sampling.columns; x += stride) {
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
       if (!include(pixel, x, y) || pixel.alpha < 32) {
         continue;
@@ -57,7 +58,7 @@ function appendPass(
       const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
       const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
-          const jitter = strokeJitter(x, y, pass, unit);
+          const jitter = strokeJitter(x, y, pass, unit * 1.25);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
           const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
       const offsetX = Math.cos(direction) * length * 0.5;
@@ -188,15 +189,15 @@ function passLabel(pass: EditorPaintPass) {
 }
 
 function strokeDirection(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number, pass: EditorPaintPass) {
-  if (pass === "background" || pass === "major-forms") {
-    const variation = ((x * 17 + y * 31) % 9) - 4;
-    return variation * 0.09 + (x % 3 === 0 ? 0.3 : -0.16);
-  }
   const left = brightness(sample(data, columns, rows, x - 1, y));
   const right = brightness(sample(data, columns, rows, x + 1, y));
   const top = brightness(sample(data, columns, rows, x, y - 1));
   const bottom = brightness(sample(data, columns, rows, x, y + 1));
-  return Math.atan2(bottom - top, right - left) + Math.PI / 2;
+  const contourDirection = Math.atan2(bottom - top, right - left) + Math.PI / 2;
+  if (pass !== "background" && pass !== "major-forms") return contourDirection;
+
+  const variation = (((x * 17 + y * 31) % 13) - 6) * 0.07;
+  return contourDirection + variation;
 }
 
 function quantizePixel(pixel: Pixel, step: number): Pixel {
