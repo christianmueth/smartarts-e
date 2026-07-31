@@ -54,9 +54,13 @@ type Props = {
   signedIn: boolean;
   initialProjects: ProjectSummary[];
   initialProject: ProjectDetail | null;
+  initialGenerationAccess: {
+    isPremium: boolean;
+    remaining: number | null;
+  } | null;
 };
 
-export default function HomeStudioMvp({ signedIn, initialProjects, initialProject }: Props) {
+export default function HomeStudioMvp({ signedIn, initialProjects, initialProject, initialGenerationAccess }: Props) {
   const [projects, setProjects] = useState(initialProjects);
   const [activeProject, setActiveProject] = useState(initialProject);
   const [activeProjectId, setActiveProjectId] = useState(initialProject?.id || initialProjects[0]?.id || null);
@@ -69,6 +73,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
   const [loadingProject, setLoadingProject] = useState(false);
   const [currentBatchIds, setCurrentBatchIds] = useState<string[]>([]);
   const [hiddenAssetIds, setHiddenAssetIds] = useState<string[]>([]);
+  const [generationAccess, setGenerationAccess] = useState(initialGenerationAccess);
 
   useEffect(() => {
     setSelectedAssetId((current) => current && activeProject?.assets.some((asset) => asset.id === current)
@@ -200,6 +205,9 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
       }
 
       const project = data.project as ProjectDetail;
+      if (data.generationAccess && typeof data.generationAccess === "object") {
+        setGenerationAccess(data.generationAccess as { isPremium: boolean; remaining: number | null });
+      }
       const batchIds = Array.isArray(data?.createdAssetIds) ? data.createdAssetIds.filter((value: unknown) => typeof value === "string") : [];
       setHiddenAssetIds([]);
       setActiveProject(project);
@@ -466,6 +474,11 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
               >
                 {busyAction === "reset" ? "Clearing..." : "New session"}
               </button>
+              {signedIn && generationAccess ? (
+                <span className="text-sm text-pink-800/75">
+                  {generationAccess.isPremium ? "Premium image generation" : `${generationAccess.remaining} free images remaining`}
+                </span>
+              ) : null}
             </div>
             {referenceImageDataUrl ? (
               <img src={referenceImageDataUrl} alt={referenceImageName || "Reference image"} className="h-28 w-28 rounded-[1.25rem] border border-pink-200 object-cover shadow-[0_10px_30px_rgba(255,170,205,0.28)]" />

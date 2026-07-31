@@ -15,6 +15,7 @@ model User {
   stripeCustomerId String?     @unique
   stripeSubscriptionId String? @unique
   stripePriceId String?
+  imageGenerationCount Int     @default(0)
   dailyGoal     Int            @default(50)
   lastStudyDate DateTime?
   studyStreak   Int            @default(0)

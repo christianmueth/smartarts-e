@@ -31,7 +31,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       preferredMode: body.modeHint,
     });
 
-    return NextResponse.json({ ok: true, project: result.project, createdAssetId: result.createdAssetId, createdAssetIds: result.createdAssetIds });
+    return NextResponse.json({
+      ok: true,
+      project: result.project,
+      createdAssetId: result.createdAssetId,
+      createdAssetIds: result.createdAssetIds,
+      generationAccess: result.generationAccess,
+    });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Studio command failed." }, { status: 400 });
   }

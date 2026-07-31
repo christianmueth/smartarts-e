@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma, safeUpsertUser } from "@/lib/db";
+import { reserveImageGenerations, settleImageGenerationReservation } from "@/lib/image-generation-access";
 import type {
   EditorAsset,
   EditorAssetType,
@@ -244,16 +245,23 @@ export async function generateEditorAssetsForClerkUser(input: {
   }
 
   const count = clampResultCount(input.count);
-  const images = await generateImages(buildEaselGenerationPrompt(prompt), count);
-
-  return createEditorAssetsOrTransientFallback({
-    clerkUserId: input.clerkUserId,
-    images,
-    assetType: "generated",
-    prompt,
-    titleBuilder: (_, index) => buildAssetTitle(prompt, index, images.length),
-    sourceAssetId: null,
-  });
+  const reservation = await reserveImageGenerations(input.clerkUserId, count);
+  try {
+    const images = await generateImages(buildEaselGenerationPrompt(prompt), count);
+    const assets = await createEditorAssetsOrTransientFallback({
+      clerkUserId: input.clerkUserId,
+      images,
+      assetType: "generated",
+      prompt,
+      titleBuilder: (_, index) => buildAssetTitle(prompt, index, images.length),
+      sourceAssetId: null,
+    });
+    await settleImageGenerationReservation(reservation, assets.length);
+    return assets;
+  } catch (error) {
+    await settleImageGenerationReservation(reservation, 0);
+    throw error;
+  }
 }
 
 export async function editEditorAssetForClerkUser(input: {
@@ -275,20 +283,27 @@ export async function editEditorAssetForClerkUser(input: {
   }
 
   const count = clampResultCount(input.count);
-  const images = await editImages({
-    prompt,
-    sourceUrl: source.sourceUrl,
-    count,
-  });
-
-  return createEditorAssetsOrTransientFallback({
-    clerkUserId: input.clerkUserId,
-    images,
-    assetType: "edited",
-    prompt,
-    titleBuilder: (_, index) => buildAssetTitle(`${source.title} edit`, index, images.length),
-    sourceAssetId: source.id,
-  });
+  const reservation = await reserveImageGenerations(input.clerkUserId, count);
+  try {
+    const images = await editImages({
+      prompt,
+      sourceUrl: source.sourceUrl,
+      count,
+    });
+    const assets = await createEditorAssetsOrTransientFallback({
+      clerkUserId: input.clerkUserId,
+      images,
+      assetType: "edited",
+      prompt,
+      titleBuilder: (_, index) => buildAssetTitle(`${source.title} edit`, index, images.length),
+      sourceAssetId: source.id,
+    });
+    await settleImageGenerationReservation(reservation, assets.length);
+    return assets;
+  } catch (error) {
+    await settleImageGenerationReservation(reservation, 0);
+    throw error;
+  }
 }
 
 async function resolveEditorEditSource(input: {

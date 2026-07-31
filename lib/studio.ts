@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { callLLMResult } from "@/lib/aiClient";
 import { isMissingTableOrColumnError, prisma, safeUpsertUser } from "@/lib/db";
+import { getImageGenerationAccessForClerkUser, reserveImageGenerations, settleImageGenerationReservation } from "@/lib/image-generation-access";
 
 const PROJECT_LIST_LIMIT = 24;
 const PROJECT_MESSAGE_LIMIT = 60;
@@ -463,6 +464,7 @@ export async function runStudioProjectCommand(input: {
   let createdAssetId: string | null = null;
   let createdAssetIds: string[] = [];
   let imageFailureMessage: string | null = null;
+  let generationReservation: Awaited<ReturnType<typeof reserveImageGenerations>> | null = null;
 
   try {
     if (plan.mode === "generate" || plan.mode === "edit") {
@@ -472,6 +474,7 @@ export async function runStudioProjectCommand(input: {
         Boolean(referenceImageDataUrl)
       );
       const sourceUrl = referenceImageDataUrl || referenceAsset?.sourceUrl || null;
+      generationReservation = await reserveImageGenerations(input.clerkUserId, resultCount);
       const images = useReferenceImage && sourceUrl
         ? await editStudioImages({ prompt: plan.prompt, sourceUrl, count: resultCount })
         : await generateStudioImages(plan.prompt, resultCount);
@@ -500,11 +503,16 @@ export async function runStudioProjectCommand(input: {
       })));
       createdAssetIds = createdAssets.map((asset) => asset.id);
       createdAssetId = createdAssetIds[0] || null;
+      await settleImageGenerationReservation(generationReservation, createdAssetIds.length);
+      generationReservation = null;
       assistantReply = createdAssetIds.length
         ? `${assistantReply} I added ${createdAssetIds.length} image ${createdAssetIds.length === 1 ? "version" : "versions"} to the library for saving, editing, and download.`
         : assistantReply;
     }
   } catch (error) {
+    if (generationReservation) {
+      await settleImageGenerationReservation(generationReservation, 0);
+    }
     imageFailureMessage = error instanceof Error ? error.message : "Image processing failed.";
     assistantReply = `${assistantReply} Image processing failed: ${imageFailureMessage}`;
   }
@@ -539,6 +547,7 @@ export async function runStudioProjectCommand(input: {
     project: await getStudioProjectDetailForClerkUser(input.clerkUserId, project.id),
     createdAssetId,
     createdAssetIds,
+    generationAccess: await getImageGenerationAccessForClerkUser(input.clerkUserId),
   };
 }
 
