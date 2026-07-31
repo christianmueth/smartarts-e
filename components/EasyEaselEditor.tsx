@@ -106,11 +106,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (shouldIgnoreEditorShortcut(event.target)) {
-        return;
-      }
-
-      const isMeta = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
 
       if (key === "escape") {
@@ -124,6 +119,12 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         cropAnchorRef.current = null;
         return;
       }
+
+      if (shouldIgnoreEditorShortcut(event.target)) {
+        return;
+      }
+
+      const isMeta = event.metaKey || event.ctrlKey;
 
       if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerIds.length) {
         event.preventDefault();
