@@ -2488,7 +2488,9 @@ function buildGenericDoodleAssistPlan(prompt: string, document: EditorCanvasDocu
     actions: [
       { tool: "ellipse", label: "Doodle form", x: centerX - size * 0.56, y: centerY - size * 0.5, width: size * 1.12, height: size, stroke, fill: "rgba(255,95,178,0.16)", strokeWidth: 5 },
       { tool: "brush", label: "Doodle contour", points: [centerX - size * 0.5, centerY + size * 0.12, centerX - size * 0.24, centerY - size * 0.54, centerX + size * 0.28, centerY - size * 0.44, centerX + size * 0.52, centerY + size * 0.1, centerX + size * 0.1, centerY + size * 0.48, centerX - size * 0.5, centerY + size * 0.12], stroke, strokeWidth: 6 },
-      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.26, centerY, centerX, centerY - size * 0.2, centerX + size * 0.26, centerY], stroke: accent, strokeWidth: 5 },
+      { tool: "brush", label: "Doodle structure", points: [centerX - size * 0.3, centerY + size * 0.04, centerX, centerY - size * 0.22, centerX + size * 0.3, centerY + size * 0.04, centerX + size * 0.06, centerY + size * 0.24], stroke: accent, strokeWidth: 5 },
+      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.28, centerY + size * 0.3, centerX - size * 0.06, centerY + size * 0.1, centerX + size * 0.18, centerY + size * 0.28, centerX + size * 0.32, centerY + size * 0.12], stroke, strokeWidth: 4 },
+      { tool: "brush", label: "Doodle ground", points: [centerX - size * 0.58, centerY + size * 0.56, centerX - size * 0.2, centerY + size * 0.6, centerX + size * 0.2, centerY + size * 0.56, centerX + size * 0.6, centerY + size * 0.6], stroke: accent, strokeWidth: 4 },
       { tool: "ellipse", label: "Doodle accent", x: centerX - size * 0.12, y: centerY + size * 0.1, width: size * 0.24, height: size * 0.18, stroke: accent, fill: "rgba(255,178,0,0.32)", strokeWidth: 3 },
     ],
   };

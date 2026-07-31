@@ -163,9 +163,11 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
           "Convert the prompt into direct easel tool actions only.",
           "Always use mode=canvas.",
           "Use only text, rect, ellipse, arrow, brush, or eraser.",
-          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 4-12 actions.",
-          "For drawings, combine brush strokes with rects or ellipses where useful; use text only for a requested label, never as a substitute for the drawing.",
-          "Every brush action needs an ordered polyline of at least 3 points, and every shape needs x, y, width, and height.",
+          "When asked to draw, doodle, sketch, make, create, or paint something, produce a recognizable drawing with 6-12 actions.",
+          "Make drawings brush-led: include at least 3 brush actions for an outer contour, a major structural feature, and interior details. Use rects or ellipses only as optional supporting parts.",
+          "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
+          "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
+          "Compose the object around the center of the document, preserve recognizable proportions, and keep all marks inside the canvas.",
           "If the user references an existing item like 'my flower' or 'the second flower', use the selected layer bounds when present, otherwise use the supplied layer list.",
           "Keep all coordinates within the document bounds.",
           "If the request is too vague for a precise drawing, choose a minimal helpful markup action rather than switching modes.",
@@ -203,7 +205,7 @@ async function planWithLlm(input: EaselAssistInput): Promise<EditorAssistPlan | 
 
   const parsed = safeJsonParse(result.content);
   const plan = normalizeAssistPlan(parsed, input.document);
-  if (wantsDoodle && (!plan || !plan.actions.some((action) => action.tool === "brush" || action.tool === "rect" || action.tool === "ellipse"))) {
+  if (wantsDoodle && !isUsableDoodlePlan(plan)) {
     return null;
   }
   return plan;
@@ -983,7 +985,9 @@ function buildGenericDoodleFallbackPlan(input: EaselAssistInput): EditorAssistPl
     actions: [
       { tool: "ellipse", label: "Doodle form", x: centerX - size * 0.56, y: centerY - size * 0.5, width: size * 1.12, height: size, stroke, fill: withAlpha(stroke, 0.16), strokeWidth: 5 },
       { tool: "brush", label: "Doodle contour", points: [centerX - size * 0.5, centerY + size * 0.12, centerX - size * 0.24, centerY - size * 0.54, centerX + size * 0.28, centerY - size * 0.44, centerX + size * 0.52, centerY + size * 0.1, centerX + size * 0.1, centerY + size * 0.48, centerX - size * 0.5, centerY + size * 0.12], stroke, strokeWidth: 6 },
-      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.26, centerY, centerX, centerY - size * 0.2, centerX + size * 0.26, centerY], stroke: accent, strokeWidth: 5 },
+      { tool: "brush", label: "Doodle structure", points: [centerX - size * 0.3, centerY + size * 0.04, centerX, centerY - size * 0.22, centerX + size * 0.3, centerY + size * 0.04, centerX + size * 0.06, centerY + size * 0.24], stroke: accent, strokeWidth: 5 },
+      { tool: "brush", label: "Doodle detail", points: [centerX - size * 0.28, centerY + size * 0.3, centerX - size * 0.06, centerY + size * 0.1, centerX + size * 0.18, centerY + size * 0.28, centerX + size * 0.32, centerY + size * 0.12], stroke, strokeWidth: 4 },
+      { tool: "brush", label: "Doodle ground", points: [centerX - size * 0.58, centerY + size * 0.56, centerX - size * 0.2, centerY + size * 0.6, centerX + size * 0.2, centerY + size * 0.56, centerX + size * 0.6, centerY + size * 0.6], stroke: accent, strokeWidth: 4 },
       { tool: "ellipse", label: "Doodle accent", x: centerX - size * 0.12, y: centerY + size * 0.1, width: size * 0.24, height: size * 0.18, stroke: accent, fill: withAlpha(accent, 0.32), strokeWidth: 3 },
     ],
   };
@@ -1186,6 +1190,13 @@ function isMathPrompt(prompt: string) {
 
 function isDoodlePrompt(prompt: string) {
   return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
+}
+
+function isUsableDoodlePlan(plan: EditorAssistPlan | null) {
+  if (!plan || plan.actions.length < 6) return false;
+  const brushActions = plan.actions.filter((action) => action.tool === "brush");
+  if (brushActions.length < 3) return false;
+  return brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8);
 }
 
 function normalizeMathSolution(value: unknown): MathSolution | null {
