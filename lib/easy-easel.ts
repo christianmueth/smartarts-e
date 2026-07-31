@@ -244,7 +244,7 @@ export async function generateEditorAssetsForClerkUser(input: {
   }
 
   const count = clampResultCount(input.count);
-  const images = await generateImages(prompt, count);
+  const images = await generateImages(buildEaselGenerationPrompt(prompt), count);
 
   return createEditorAssetsOrTransientFallback({
     clerkUserId: input.clerkUserId,
@@ -742,6 +742,17 @@ function readEditorAssetType(metadata: Record<string, unknown>, prompt: string |
     return "generated";
   }
   return "upload";
+}
+
+function buildEaselGenerationPrompt(prompt: string) {
+  const cleanedPrompt = cleanText(prompt, 1600);
+  return [
+    "Create an editor-ready Easy Easel asset.",
+    `User request: ${cleanedPrompt}`,
+    "Make it suitable for placement on a digital canvas: clear subject separation, clean silhouette, centered composition, and simple readable forms.",
+    "Avoid mockups, frames, UI chrome, watermarks, and decorative text unless the user explicitly asks for text.",
+    "Prefer a plain or easily removable background so the result works well as an editable canvas element.",
+  ].join(" ");
 }
 
 function buildAssetTitle(prompt: string, index: number, total: number) {
