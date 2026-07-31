@@ -1543,12 +1543,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                       {busyAction === "generate" ? "Running..." : "Run on easel"}
                     </button>
                   </div>
-                  <p className="text-xs leading-6 text-pink-500">
-                    Prompts here only use easel tools. Ask it to write text, explain a topic on-canvas, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
-                  </p>
-                  <p className="text-xs leading-6 text-pink-400">
-                    In select mode, shift-drag or double-click-drag on empty canvas to grab a group. Hold Alt while dragging to lasso-select layers. Press Escape to clear the selection.
-                  </p>
                 </div>
               </details>
             </div>
