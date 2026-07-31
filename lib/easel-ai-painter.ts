@@ -26,25 +26,25 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendUnderpainting(actions, pixels, sampling, bounds);
-  appendPass(actions, "background", pixels, sampling, bounds, 5, 0.24, 1.15, (_pixel, x, y) => isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.4, 0.92, (_pixel, x, y) => !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && (isEdge(pixels, sampling.columns, sampling.rows, x, y) || localContrast(pixels, sampling.columns, sampling.rows, x, y) > 58));
-  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendSmoothBase(actions, pixels, sampling, bounds);
+  appendPass(actions, "background", pixels, sampling, bounds, 5, 0.24, 1.15, 80, (_pixel, x, y) => isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.4, 0.92, 160, (_pixel, x, y) => !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && (isEdge(pixels, sampling.columns, sampling.rows, x, y) || localContrast(pixels, sampling.columns, sampling.rows, x, y) > 58));
+  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, 150, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, 240, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
 }
 
-function appendUnderpainting(
+function appendSmoothBase(
   actions: EditorAssistAction[],
   pixels: Uint8ClampedArray,
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
   bounds: { x: number; y: number; width: number; height: number }
 ) {
-  const targetBlocks = sampling.cellWidth >= 28 ? 24 : sampling.cellWidth >= 9 ? 44 : 64;
-  const columns = Math.max(1, Math.round(Math.sqrt(targetBlocks * (bounds.width / bounds.height))));
-  const rows = Math.max(1, Math.ceil(targetBlocks / columns));
+  const targetStrokes = sampling.cellWidth >= 28 ? 80 : sampling.cellWidth >= 9 ? 130 : 180;
+  const columns = Math.max(1, Math.round(Math.sqrt(targetStrokes * (bounds.width / bounds.height))));
+  const rows = Math.max(1, Math.ceil(targetStrokes / columns));
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const sourceLeft = Math.floor((x / columns) * sampling.columns);
@@ -52,20 +52,23 @@ function appendUnderpainting(
       const sourceRight = Math.ceil(((x + 1) / columns) * sampling.columns);
       const sourceBottom = Math.ceil(((y + 1) / rows) * sampling.rows);
       const pixel = averageRegion(pixels, sampling.columns, sampling.rows, sourceLeft, sourceTop, sourceRight, sourceBottom);
-      const left = (x / columns) * bounds.width;
-      const top = (y / rows) * bounds.height;
+      const cellWidth = bounds.width / columns;
+      const cellHeight = bounds.height / rows;
+      const unit = Math.max(cellWidth, cellHeight);
+      const centerX = bounds.x + (x + 0.5 + (y % 2 ? 0.18 : -0.18)) * cellWidth;
+      const centerY = bounds.y + (y + 0.5) * cellHeight;
+      const direction = ((x * 13 + y * 7) % 9 - 4) * 0.12;
+      const length = unit * 1.6;
+      const offsetX = Math.cos(direction) * length * 0.5;
+      const offsetY = Math.sin(direction) * length * 0.5;
       actions.push({
-        tool: "rect",
+        tool: "brush",
         pass: "background",
-        label: `Underpainting region ${actions.length + 1}`,
-        x: bounds.x + left,
-        y: bounds.y + top,
-        width: ((x + 1) / columns) * bounds.width - left,
-        height: ((y + 1) / rows) * bounds.height - top,
-        fill: toColor(quantizePixel(pixel, 24)),
-        stroke: "rgba(0,0,0,0)",
-        strokeWidth: 1,
-        opacity: 1,
+        label: "Broad tone",
+        points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+        stroke: toColor(quantizePixel(pixel, 20)),
+        strokeWidth: unit * 1.28,
+        opacity: 0.62,
       });
     }
   }
@@ -80,8 +83,10 @@ function appendPass(
   stride: number,
   opacity: number,
   widthMultiplier: number,
+  maxStrokes: number,
   include: (pixel: Pixel, x: number, y: number) => boolean
 ) {
+  const candidates: Array<{ action: EditorAssistAction; priority: number }> = [];
   for (let y = 0; y < sampling.rows; y += stride) {
     const rowOffset = (Math.floor(y / stride) % 2) * Math.max(1, Math.floor(stride / 2));
     for (let x = rowOffset; x < sampling.columns; x += stride) {
@@ -103,17 +108,22 @@ function appendPass(
       const offsetY = Math.sin(direction) * length * 0.5;
       const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
       const curveY = Math.sin(direction + Math.PI / 2) * length * 0.08;
-      actions.push({
+      candidates.push({
+        priority: pass === "background" ? 255 - contrast : refinementError(pixels, sampling.columns, sampling.rows, x, y),
+        action: {
         tool: "brush",
         pass,
-        label: `${passLabel(pass)} stroke ${actions.length + 1}`,
+        label: passLabel(pass),
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
         strokeWidth: Math.max(1, unit * widthMultiplier * brushScale),
         opacity,
+        },
       });
     }
   }
+  candidates.sort((first, second) => second.priority - first.priority);
+  actions.push(...candidates.slice(0, maxStrokes).map((candidate) => candidate.action));
 }
 
 function getSampling(detailLevel: EditorPaintDetailLevel, width: number, height: number) {
@@ -364,6 +374,31 @@ function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x
     colorDistance(pixel, sample(data, columns, rows, x, y - 1)),
     colorDistance(pixel, sample(data, columns, rows, x, y + 1))
   );
+}
+
+function refinementError(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const pixel = sample(data, columns, rows, x, y);
+  const broadTone = averageWindow(data, columns, rows, x, y, 4);
+  return colorDistance(pixel, broadTone) + localContrast(data, columns, rows, x, y) * 0.6;
+}
+
+function averageWindow(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number, radius: number): Pixel {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let alpha = 0;
+  let count = 0;
+  for (let yOffset = -radius; yOffset <= radius; yOffset += 1) {
+    for (let xOffset = -radius; xOffset <= radius; xOffset += 1) {
+      const pixel = sample(data, columns, rows, x + xOffset, y + yOffset);
+      red += pixel.red;
+      green += pixel.green;
+      blue += pixel.blue;
+      alpha += pixel.alpha;
+      count += 1;
+    }
+  }
+  return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
 }
 
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
