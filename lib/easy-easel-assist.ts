@@ -1,4 +1,5 @@
 import { callLLMResult } from "@/lib/aiClient";
+import { buildStructuredIllustrationPlan } from "@/lib/easel-structured-illustration";
 import type { EditorAssistAction, EditorAssistLayerCandidate, EditorAssistPlan, EditorAssistSelectedLayer } from "@/types/easy-easel";
 
 type EaselAssistInput = {
@@ -27,14 +28,6 @@ type MathSolution = {
 type DoodleDecomposition = {
   subject: string;
   parts: string[];
-};
-
-type DrawingBudget = {
-  complexity: "simple" | "standard" | "detailed" | "intricate";
-  recommendedActions: number;
-  recommendedBrushActions: number;
-  maxActions: number;
-  maxBrushActions: number;
 };
 
 type SketchStyle = {
@@ -113,17 +106,7 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
     return placeGeneratedPlan(heuristicPlan, { ...input, prompt });
   }
 
-  const decomposition = isDoodlePrompt(prompt) ? await generateDoodleDecomposition(prompt) : null;
-  const llmPlan = await planWithLlm({ ...input, prompt }, decomposition);
-  if (llmPlan) {
-    return placeGeneratedPlan(llmPlan, { ...input, prompt });
-  }
-
-  if (isDoodlePrompt(prompt)) {
-    return placeGeneratedPlan(buildGenericDoodleFallbackPlan({ ...input, prompt }), { ...input, prompt });
-  }
-
-  return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), { ...input, prompt });
+  return placeGeneratedPlan(buildStructuredIllustrationPlan(prompt, input.document), { ...input, prompt });
 }
 
 async function buildMathCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -145,7 +128,7 @@ async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<Edit
 
 async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecomposition | null = null): Promise<EditorAssistPlan | null> {
   const wantsDoodle = isDoodlePrompt(input.prompt);
-  const drawingBudget = wantsDoodle ? determineDrawingBudget(input.prompt, decomposition) : null;
+  const drawingComplexity = wantsDoodle ? describeDrawingComplexity(input.prompt, decomposition) : null;
   const selectedLayer = input.selectedLayer
     ? {
         id: input.selectedLayer.id,
@@ -182,7 +165,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           "Convert the prompt into direct easel tool actions only.",
           "Always use mode=canvas.",
           "Use only text, rect, ellipse, arrow, brush, or eraser.",
-          "When asked to draw, doodle, sketch, make, create, or paint something, decide the number of actions from the subject's visual complexity. Use only the strokes needed for a recognizable drawing; simple objects need fewer marks, while multi-part objects need more structure and detail.",
+          "When asked to draw, doodle, sketch, make, create, or paint something, decide the number of actions from the subject's visual complexity and the supplied parts. Use only the strokes needed for a recognizable drawing; simple objects need fewer marks, while multi-part objects need more structure and detail.",
           "Make drawings brush-led with an outer contour, major structural features, repeated components when present, and only the hatching, shadows, and highlights that help recognition. Never exceed 48 actions or 36 brush actions. Use rects or ellipses only as optional supporting parts.",
           "Use text only for a requested label, never as a substitute for the drawing. Do not return a generic symbol, abstract blob, or prompt card.",
           "Every brush action needs an ordered polyline of at least 4 points. Close the outer contour by repeating its first point at the end when appropriate. Every shape needs x, y, width, and height.",
@@ -201,7 +184,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
           prompt: input.prompt,
           document: input.document,
           decomposition,
-          drawingBudget,
+          drawingComplexity,
           selectedLayer,
           layers,
         }),
@@ -228,7 +211,7 @@ async function planWithLlm(input: EaselAssistInput, decomposition: DoodleDecompo
 
   const parsed = safeJsonParse(result.content);
   const plan = normalizeAssistPlan(parsed, input.document);
-  if (wantsDoodle && !isUsableDoodlePlan(plan, decomposition, drawingBudget)) {
+  if (wantsDoodle && !isUsableDoodlePlan(plan, decomposition)) {
     return null;
   }
   return plan;
@@ -820,6 +803,39 @@ function buildHouseSketchPlan(input: EaselAssistInput, style: SketchStyle): Edit
   };
 }
 
+function buildBarnSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
+  const centerX = input.document.width * 0.5;
+  const centerY = input.document.height * 0.4;
+  const width = 260 * style.scale * style.stretchX;
+  const height = 168 * style.scale * style.stretchY;
+  const x = centerX - width / 2;
+  const y = centerY;
+  const roofPeakY = y - 116 * style.scale;
+  const doorWidth = width * 0.27;
+  const doorHeight = height * 0.62;
+  const doorX = centerX - doorWidth / 2;
+  const doorY = y + height - doorHeight;
+  const sidingYs = [y + height * 0.2, y + height * 0.38, y + height * 0.56, y + height * 0.74];
+
+  return {
+    mode: "canvas",
+    assistantMessage: "Sketching a barn with easel tools.",
+    actions: [
+      { tool: "rect", label: "Barn facade", x, y, width, height, stroke: "#b63c3c", fill: "rgba(205,66,66,0.22)", strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "brush", label: "Gable roof", points: [x - 16 * style.scale, y + 4 * style.scale, centerX, roofPeakY, x + width + 16 * style.scale, y + 4 * style.scale], stroke: "#7a2c2c", strokeWidth: Math.max(7, style.strokeWidth + 2) },
+      { tool: "brush", label: "Roof edge", points: [x - 20 * style.scale, y + 4 * style.scale, x + width + 20 * style.scale, y + 4 * style.scale], stroke: "#7a2c2c", strokeWidth: Math.max(5, style.strokeWidth) },
+      { tool: "rect", label: "Barn doors", x: doorX, y: doorY, width: doorWidth, height: doorHeight, stroke: "#6d3f2b", fill: "rgba(115,73,49,0.18)", strokeWidth: Math.max(4, style.strokeWidth - 1) },
+      { tool: "brush", label: "Door split", points: [centerX, doorY, centerX, y + height], stroke: "#6d3f2b", strokeWidth: 4 },
+      { tool: "brush", label: "Door brace left", points: [doorX + doorWidth * 0.1, doorY + doorHeight * 0.84, doorX + doorWidth * 0.46, doorY + doorHeight * 0.18], stroke: "#f4d29d", strokeWidth: 4 },
+      { tool: "brush", label: "Door brace right", points: [doorX + doorWidth * 0.9, doorY + doorHeight * 0.84, doorX + doorWidth * 0.54, doorY + doorHeight * 0.18], stroke: "#f4d29d", strokeWidth: 4 },
+      { tool: "rect", label: "Hay loft", x: centerX - width * 0.09, y: y + height * 0.12, width: width * 0.18, height: height * 0.2, stroke: "#f4d29d", fill: "rgba(244,210,157,0.2)", strokeWidth: 3 },
+      ...sidingYs.map((sidingY, index) => ({ tool: "brush" as const, label: `Siding ${index + 1}`, points: [x + 12 * style.scale, sidingY, doorX - 8 * style.scale, sidingY, doorX + doorWidth + 8 * style.scale, sidingY, x + width - 12 * style.scale, sidingY], stroke: "#d86a5b", strokeWidth: 3 })),
+      { tool: "brush", label: "Ground", points: [x - 42 * style.scale, y + height + 14 * style.scale, centerX, y + height + 22 * style.scale, x + width + 44 * style.scale, y + height + 14 * style.scale], stroke: "#5f7a3c", strokeWidth: 5 },
+      { tool: "brush", label: "Barn shadow", points: [x + width * 0.08, y + height + 27 * style.scale, centerX, y + height + 34 * style.scale, x + width * 0.9, y + height + 27 * style.scale], stroke: "#6d5561", strokeWidth: 4 },
+    ],
+  };
+}
+
 function buildMountainSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
   const baseY = input.document.height * 0.58;
   const centerX = input.document.width * 0.5;
@@ -1059,7 +1075,7 @@ function buildMotorcycleSketchPlan(input: EaselAssistInput, style: SketchStyle):
 
 function buildDeterministicFallbackCanvasPlan(input: EaselAssistInput): EditorAssistPlan {
   if (isDoodlePrompt(input.prompt)) {
-    return buildGenericDoodleFallbackPlan(input);
+    return buildStructuredIllustrationPlan(input.prompt, input.document);
   }
   const subject = extractSubjectLabel(input.prompt) || "Canvas note";
   const boxWidth = clamp(Math.max(260, subject.length * 20 + 120), 260, Math.max(260, input.document.width - 80));
@@ -1376,30 +1392,21 @@ function isDoodlePrompt(prompt: string) {
   return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
 }
 
-function determineDrawingBudget(prompt: string, decomposition: DoodleDecomposition | null): DrawingBudget {
+function describeDrawingComplexity(prompt: string, decomposition: DoodleDecomposition | null) {
   const lower = prompt.toLowerCase();
   const requestedDetail = /\b(?:detailed|elaborate|intricate|realistic|complex|technical|architectural|diagram|many|multiple|crowd|city|landscape)\b/.test(lower);
   const repeatedParts = /\b(?:wheels?|windows?|petals?|leaves|buildings?|people|trees|gears?|spokes?|panels?|levels?|stories)\b/.test(lower);
   const partCount = decomposition?.parts.length || 0;
-  const wordCount = lower.split(/\s+/).filter(Boolean).length;
-  const score = (requestedDetail ? 3 : 0) + (repeatedParts ? 2 : 0) + Math.max(0, partCount - 2) + (wordCount > 10 ? 1 : 0);
-
-  if (score >= 8) {
-    return { complexity: "intricate", recommendedActions: 34, recommendedBrushActions: 26, maxActions: 48, maxBrushActions: 36 };
-  }
-  if (score >= 5) {
-    return { complexity: "detailed", recommendedActions: 24, recommendedBrushActions: 18, maxActions: 38, maxBrushActions: 28 };
-  }
-  if (score >= 2) {
-    return { complexity: "standard", recommendedActions: 14, recommendedBrushActions: 10, maxActions: 26, maxBrushActions: 20 };
-  }
-  return { complexity: "simple", recommendedActions: 6, recommendedBrushActions: 4, maxActions: 14, maxBrushActions: 10 };
+  if (requestedDetail && repeatedParts) return "intricate multi-part subject";
+  if (requestedDetail || repeatedParts || partCount > 5) return "detailed multi-part subject";
+  if (partCount > 2) return "structured subject with several visible parts";
+  return "simple subject";
 }
 
-function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null, budget: DrawingBudget | null) {
-  if (!plan || plan.actions.length > (budget?.maxActions || 48)) return false;
+function isUsableDoodlePlan(plan: EditorAssistPlan | null, decomposition: DoodleDecomposition | null) {
+  if (!plan || plan.actions.length > 48) return false;
   const brushActions = plan.actions.filter((action) => action.tool === "brush");
-  if (brushActions.length > (budget?.maxBrushActions || 36)) return false;
+  if (brushActions.length > 36) return false;
   if (!brushActions.every((action) => Array.isArray(action.points) && action.points.length >= 8)) return false;
   if (!decomposition) return true;
   const labels = plan.actions.map((action) => String(action.label || "").toLowerCase());
@@ -1986,6 +1993,7 @@ const SKETCH_LEXICON: SketchLexiconEntry[] = [
   { nouns: ["tree", "oak", "pine"], build: buildTreeSketchPlan, message: "tree" },
   { nouns: ["leaf", "leaves", "frond"], build: buildLeafSketchPlan, message: "leaf" },
   { nouns: ["apple", "fruit"], build: buildAppleSketchPlan, message: "apple" },
+  { nouns: ["barn", "farmhouse", "stable"], build: buildBarnSketchPlan, message: "barn" },
   { nouns: ["house", "home", "cabin"], build: buildHouseSketchPlan, message: "house" },
   { nouns: ["mountain", "peak", "hill"], build: buildMountainSketchPlan, message: "mountain" },
   { nouns: ["rainbow", "arc"], build: buildRainbowSketchPlan, message: "rainbow" },

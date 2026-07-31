@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Konva from "konva";
 import { Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text as KonvaText, Transformer } from "react-konva";
 import { toast } from "sonner";
+import { buildStructuredIllustrationPlan } from "@/lib/easel-structured-illustration";
 import type {
   EditorAssistAction,
   EditorAssistPlan,
@@ -2143,6 +2144,14 @@ function buildLocalCanvasFallbackPlan(
     };
   }
 
+  if (/\b(barn|farmhouse|stable)\b/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Sketching a barn with easel tools.",
+      actions: buildBarnAssistActions(document),
+    };
+  }
+
   if (/\b(building|skyscraper|office|tower|apartment)\b/.test(lower)) {
     return {
       mode: "canvas",
@@ -2241,47 +2250,10 @@ function buildLocalCanvasFallbackPlan(
   }
 
   if (/\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/.test(lower)) {
-    return buildGenericDoodleAssistPlan(prompt, document);
+    return buildStructuredIllustrationPlan(prompt, document);
   }
 
-  const text = extractFallbackText(prompt);
-  const width = Math.max(220, Math.min(document.width - 60, text.length * 22 + 120));
-  const x = Math.max(24, Math.min(document.width - width - 24, document.width / 2 - width / 2));
-  const y = selectedLayer ? Math.max(24, target.y - 84) : Math.max(24, document.height * 0.18);
-  return {
-    mode: "canvas",
-    assistantMessage: "Translating the prompt into easel markup tools.",
-    actions: [
-      {
-        tool: "rect",
-        label: "Prompt box",
-        x,
-        y,
-        width,
-        height: 108,
-        stroke: "#ff8a5b",
-        fill: "rgba(255,241,196,0.58)",
-        strokeWidth: 4,
-      },
-      {
-        tool: "text",
-        label: "Prompt note",
-        text,
-        x: x + 24,
-        y: y + 26,
-        width: width - 48,
-        fontSize: 36,
-        color: "#7a1f4f",
-      },
-      {
-        tool: "brush",
-        label: "Accent underline",
-        points: [x + 20, y + 86, x + width * 0.42, y + 90, x + width - 22, y + 86],
-        stroke: "#ff5fb2",
-        strokeWidth: 7,
-      },
-    ],
-  };
+  return buildStructuredIllustrationPlan(prompt, document);
 }
 
 function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string, prompt: string): EditorAssistPlan {
@@ -2510,6 +2482,31 @@ function buildBuildingAssistActions(document: EditorCanvasDocument): EditorAssis
     { tool: "rect", label: "Window 3", x: x + 34, y: y + 116, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
     { tool: "rect", label: "Window 4", x: x + 134, y: y + 116, width: 38, height: 35, stroke: "#ffb200", fill: "rgba(255,178,0,0.18)", strokeWidth: 3 },
     { tool: "brush", label: "Ground line", points: [x - 36, y + height + 14, centerX, y + height + 20, x + width + 46, y + height + 14], stroke: "#2ca24f", strokeWidth: 4 },
+  ];
+}
+
+function buildBarnAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.4;
+  const width = 260;
+  const height = 168;
+  const x = centerX - width / 2;
+  const y = centerY;
+  const doorWidth = width * 0.27;
+  const doorHeight = height * 0.62;
+  const doorX = centerX - doorWidth / 2;
+  const doorY = y + height - doorHeight;
+  return [
+    { tool: "rect", label: "Barn facade", x, y, width, height, stroke: "#b63c3c", fill: "rgba(205,66,66,0.22)", strokeWidth: 5 },
+    { tool: "brush", label: "Gable roof", points: [x - 16, y + 4, centerX, y - 116, x + width + 16, y + 4], stroke: "#7a2c2c", strokeWidth: 7 },
+    { tool: "brush", label: "Roof edge", points: [x - 20, y + 4, x + width + 20, y + 4], stroke: "#7a2c2c", strokeWidth: 5 },
+    { tool: "rect", label: "Barn doors", x: doorX, y: doorY, width: doorWidth, height: doorHeight, stroke: "#6d3f2b", fill: "rgba(115,73,49,0.18)", strokeWidth: 4 },
+    { tool: "brush", label: "Door split", points: [centerX, doorY, centerX, y + height], stroke: "#6d3f2b", strokeWidth: 4 },
+    { tool: "brush", label: "Door brace left", points: [doorX + doorWidth * 0.1, doorY + doorHeight * 0.84, doorX + doorWidth * 0.46, doorY + doorHeight * 0.18], stroke: "#f4d29d", strokeWidth: 4 },
+    { tool: "brush", label: "Door brace right", points: [doorX + doorWidth * 0.9, doorY + doorHeight * 0.84, doorX + doorWidth * 0.54, doorY + doorHeight * 0.18], stroke: "#f4d29d", strokeWidth: 4 },
+    { tool: "rect", label: "Hay loft", x: centerX - width * 0.09, y: y + height * 0.12, width: width * 0.18, height: height * 0.2, stroke: "#f4d29d", fill: "rgba(244,210,157,0.2)", strokeWidth: 3 },
+    { tool: "brush", label: "Siding", points: [x + 12, y + height * 0.24, doorX - 8, y + height * 0.24, doorX + doorWidth + 8, y + height * 0.24, x + width - 12, y + height * 0.24, x + 12, y + height * 0.48, doorX - 8, y + height * 0.48, doorX + doorWidth + 8, y + height * 0.48, x + width - 12, y + height * 0.48, x + 12, y + height * 0.72, doorX - 8, y + height * 0.72, doorX + doorWidth + 8, y + height * 0.72, x + width - 12, y + height * 0.72], stroke: "#d86a5b", strokeWidth: 3 },
+    { tool: "brush", label: "Ground", points: [x - 42, y + height + 14, centerX, y + height + 22, x + width + 44, y + height + 14], stroke: "#5f7a3c", strokeWidth: 5 },
   ];
 }
 
