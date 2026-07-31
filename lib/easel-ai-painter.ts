@@ -26,6 +26,7 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
+  appendUnderpainting(actions, pixels, sampling, bounds);
   appendPass(actions, "background", pixels, sampling, bounds, 3, 0.58, 1.85, (pixel) => isBackgroundPixel(pixel, backgroundColors));
   appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.66, 1.4, (pixel) => !isBackgroundPixel(pixel, backgroundColors));
   appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
@@ -33,6 +34,33 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
+}
+
+function appendUnderpainting(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number }
+) {
+  const stride = Math.max(2, Math.round(Math.min(sampling.columns, sampling.rows) / 34));
+  for (let y = 0; y < sampling.rows; y += stride) {
+    for (let x = 0; x < sampling.columns; x += stride) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      actions.push({
+        tool: "rect",
+        pass: "background",
+        label: `Underpainting region ${actions.length + 1}`,
+        x: bounds.x + x * sampling.cellWidth,
+        y: bounds.y + y * sampling.cellHeight,
+        width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth * stride + 1),
+        height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight * stride + 1),
+        fill: toColor(quantizePixel(pixel, 24)),
+        stroke: "rgba(0,0,0,0)",
+        strokeWidth: 1,
+        opacity: 1,
+      });
+    }
+  }
 }
 
 function appendPass(
