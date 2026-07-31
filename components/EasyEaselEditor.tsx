@@ -2111,6 +2111,11 @@ function buildLocalCanvasFallbackPlan(
     return buildExplanationAssistPlan(document, extractExplanationFallbackTopic(prompt) || "this topic", prompt);
   }
 
+  if (isMathFallbackPrompt(prompt)) {
+    const mathPlan = buildLocalMathAssistPlan(prompt, document);
+    if (mathPlan) return mathPlan;
+  }
+
   if (/flower/.test(lower)) {
     return {
       mode: "canvas",
@@ -2319,6 +2324,55 @@ function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: strin
   };
 }
 
+function buildLocalMathAssistPlan(prompt: string, document: EditorCanvasDocument): EditorAssistPlan | null {
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  const linear = compact.match(/(?:solve\s*)?([+-]?\s*\d*)\s*x\s*([+-]\s*\d+)?\s*=\s*([+-]?\s*\d+(?:\.\d+)?)/i);
+  let title = "Math working";
+  let result = "Use the equation and substitute the supplied values.";
+  let steps = ["Write the relevant formula clearly.", "Substitute the known values and simplify one operation at a time."];
+
+  if (linear) {
+    const coefficientText = linear[1].replace(/\s/g, "");
+    const coefficient = coefficientText === "" || coefficientText === "+" ? 1 : coefficientText === "-" ? -1 : Number(coefficientText);
+    const constant = Number((linear[2] || "0").replace(/\s/g, ""));
+    const rightSide = Number(linear[3]);
+    if (Number.isFinite(coefficient) && coefficient !== 0 && Number.isFinite(constant) && Number.isFinite(rightSide)) {
+      const numerator = rightSide - constant;
+      const value = numerator / coefficient;
+      title = "Solve for x";
+      result = `x = ${Number.isInteger(value) ? value : Number(value.toFixed(4))}`;
+      steps = [
+        `Subtract ${constant} from both sides: ${coefficient}x = ${numerator}.`,
+        `Divide both sides by ${coefficient}.`,
+      ];
+    }
+  } else if (/\b(?:derivative|differentiate|integral|integrate|calculus)\b/i.test(compact)) {
+    title = "Calculus setup";
+    result = "Use the power rule: d/dx[x^n] = n*x^(n-1).";
+    steps = ["Apply the rule to each term separately.", "Simplify the resulting expression after differentiating."];
+  } else if (/\b(?:elasticity|supply|demand|revenue|cost|profit|marginal)\b/i.test(compact)) {
+    title = "Economics calculation setup";
+    result = "Choose the relevant relationship and substitute the provided values.";
+    steps = ["For profit, use revenue - cost; for elasticity, use (% change in Q)/(% change in P).", "Compute the value and interpret its sign and units."];
+  } else {
+    return null;
+  }
+
+  const bodyLines = wrapFallbackText([`Result: ${result}`, ...steps.map((step, index) => `${index + 1}. ${step}`)].join(" "), 64);
+  const width = Math.max(340, Math.min(document.width - 80, 820));
+  const height = Math.max(190, 98 + bodyLines.length * 30);
+  const placement = resolveFallbackPlacement(document, prompt, width, height);
+  return {
+    mode: "canvas",
+    assistantMessage: `Working through ${title.toLowerCase()}.`,
+    actions: [
+      { tool: "rect", label: "Math solution box", x: placement.x, y: placement.y, width, height, stroke: "#4d8cff", fill: "rgba(226,242,255,0.88)", strokeWidth: 4 },
+      { tool: "text", label: "Math title", text: title, x: placement.x + 24, y: placement.y + 22, width: width - 48, fontSize: 34, color: "#174a8b" },
+      { tool: "text", label: "Math working", text: bodyLines.join("\n"), x: placement.x + 24, y: placement.y + 80, width: width - 48, fontSize: 24, color: "#15385f" },
+    ],
+  };
+}
+
 function buildFlowerAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
   const centerX = document.width * 0.5;
   const centerY = document.height * 0.42;
@@ -2470,6 +2524,10 @@ function extractExplanationFallbackTopic(prompt: string) {
 
 function isExplanationFallbackPrompt(prompt: string) {
   return /^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\b/i.test(prompt.trim());
+}
+
+function isMathFallbackPrompt(prompt: string) {
+  return /(?:\d\s*[a-z]?\s*[+\-*/^=]|\b(?:solve|equation|derivative|differentiate|integral|integrate|limit|calculus|elasticity|marginal|supply|demand|revenue|cost|profit|interest|percentage)\b)/i.test(prompt);
 }
 
 function toDisplayFallbackTopic(topic: string) {

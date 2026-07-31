@@ -18,6 +18,12 @@ type ExplanationSections = {
   keyPoints: string[];
 };
 
+type MathSolution = {
+  title: string;
+  result: string;
+  steps: string[];
+};
+
 type SketchStyle = {
   stroke: string;
   fill: string;
@@ -76,6 +82,12 @@ const easelAssistSchema = {
 
 export async function planEasyEaselAssist(input: EaselAssistInput): Promise<EditorAssistPlan> {
   const prompt = cleanText(input.prompt, 1600);
+  if (isMathPrompt(prompt)) {
+    const mathPlan = await buildMathCanvasPlan({ ...input, prompt });
+    if (mathPlan) {
+      return mathPlan;
+    }
+  }
   if (isExplanationPrompt(prompt)) {
     const explanationPlan = await buildExplanationCanvasPlan({ ...input, prompt });
     if (explanationPlan) {
@@ -94,6 +106,11 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
   }
 
   return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), prompt, input.document);
+}
+
+async function buildMathCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
+  const solution = await generateMathSolution(input.prompt) || buildDeterministicMathSolution(input.prompt);
+  return solution ? buildMathSolutionLayout(input.document, solution, input.prompt) : null;
 }
 
 async function buildExplanationCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -419,6 +436,45 @@ async function generateExplanationSections(topic: string): Promise<ExplanationSe
   const parsed = safeJsonParse(result.content);
   const normalized = normalizeExplanationSections(parsed, topic);
   return normalized;
+}
+
+async function generateMathSolution(prompt: string): Promise<MathSolution | null> {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      title: { type: "string" },
+      result: { type: "string" },
+      steps: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 5 },
+    },
+    required: ["title", "result", "steps"],
+  } as const;
+  const result = await callLLMResult(
+    [
+      {
+        role: "system",
+        content: [
+          "You are a careful Easy Easel math tutor.",
+          "Solve the user's math, calculus, or quantitative economics request and return JSON only.",
+          "Use plain-text ASCII math such as x^2, f'(x), integral_0^1, and dQ/dP; do not use LaTex or markdown.",
+          "Give a short title, a direct final result, and 2-5 concise working steps that show substitutions or algebra.",
+          "For economics, state the relevant equation and interpret the numerical result when the prompt supplies enough data.",
+          "Do not echo the request. If necessary information is missing, state exactly what is needed in the result and show the applicable formula in the steps.",
+          "Keep all text under 700 characters.",
+        ].join(" "),
+      },
+      { role: "user", content: prompt },
+    ],
+    520,
+    0.1,
+    {
+      guidedJson: schema,
+      responseFormat: { type: "json_schema", json_schema: { name: "easy_easel_math_solution", schema } },
+      timeoutMs: 20_000,
+    }
+  );
+  if (!result.ok) return null;
+  return normalizeMathSolution(safeJsonParse(result.content));
 }
 
 function buildFlowerSketchPlan(input: EaselAssistInput, style: SketchStyle): EditorAssistPlan {
@@ -986,6 +1042,29 @@ function buildExplanationLayout(
   };
 }
 
+function buildMathSolutionLayout(
+  document: EaselAssistInput["document"],
+  solution: MathSolution,
+  prompt: string
+): EditorAssistPlan {
+  const width = clamp(Math.min(document.width - 80, 820), 340, document.width - 40);
+  const body = [`Result: ${solution.result}`, ...solution.steps.map((step, index) => `${index + 1}. ${step}`)].join("\n");
+  const bodyLines = splitCanvasText(body, 66);
+  const cardHeight = Math.max(190, 98 + bodyLines.length * 30);
+  const placement = resolvePlanPlacement(document, prompt, width, cardHeight);
+  const x = placement.x;
+  const y = placement.y;
+  return {
+    mode: "canvas",
+    assistantMessage: `Working through ${solution.title}.`,
+    actions: [
+      { tool: "rect", label: "Math solution box", x, y, width, height: cardHeight, stroke: "#4d8cff", fill: "rgba(226,242,255,0.88)", strokeWidth: 4 },
+      { tool: "text", label: "Math title", text: solution.title, x: x + 24, y: y + 22, width: width - 48, fontSize: 34, color: "#174a8b" },
+      { tool: "text", label: "Math working", text: bodyLines.join("\n"), x: x + 24, y: y + 80, width: width - 48, fontSize: 24, color: "#15385f" },
+    ],
+  };
+}
+
 function placeGeneratedPlan(plan: EditorAssistPlan, prompt: string, document: EaselAssistInput["document"]): EditorAssistPlan {
   const bounds = getActionBounds(plan.actions);
   if (!bounds) return plan;
@@ -1101,8 +1180,65 @@ function isExplanationPrompt(prompt: string) {
   return /^(?:explain|describe|summarize|teach me|tell me about|what is|how does|how do|why does|why do)\b/i.test(prompt.trim());
 }
 
+function isMathPrompt(prompt: string) {
+  return /(?:\d\s*[a-z]?\s*[+\-*/^=]|\b(?:solve|equation|derivative|differentiate|integral|integrate|limit|calculus|elasticity|marginal|supply|demand|revenue|cost|profit|interest|percentage)\b)/i.test(prompt);
+}
+
 function isDoodlePrompt(prompt: string) {
   return /\b(?:draw|doodle|sketch|paint|make|create|illustrate)\b/i.test(prompt);
+}
+
+function normalizeMathSolution(value: unknown): MathSolution | null {
+  const record = asRecord(value);
+  const title = cleanCanvasParagraph(record.title as string);
+  const result = cleanCanvasParagraph(record.result as string);
+  const steps = Array.isArray(record.steps)
+    ? record.steps.map((step) => cleanCanvasParagraph(step)).filter(Boolean).slice(0, 5)
+    : [];
+  if (!title || !result || steps.length < 2) return null;
+  return { title, result, steps };
+}
+
+function buildDeterministicMathSolution(prompt: string): MathSolution | null {
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  const linear = compact.match(/(?:solve\s*)?([+-]?\s*\d*)\s*x\s*([+-]\s*\d+)?\s*=\s*([+-]?\s*\d+(?:\.\d+)?)/i);
+  if (linear) {
+    const coefficientText = linear[1].replace(/\s/g, "");
+    const coefficient = coefficientText === "" || coefficientText === "+" ? 1 : coefficientText === "-" ? -1 : Number(coefficientText);
+    const constant = Number((linear[2] || "0").replace(/\s/g, ""));
+    const rightSide = Number(linear[3]);
+    if (Number.isFinite(coefficient) && coefficient !== 0 && Number.isFinite(constant) && Number.isFinite(rightSide)) {
+      const numerator = rightSide - constant;
+      const value = numerator / coefficient;
+      return {
+        title: "Solve for x",
+        result: `x = ${Number.isInteger(value) ? value : Number(value.toFixed(4))}`,
+        steps: [
+          `Start with ${coefficient}x ${constant >= 0 ? "+" : "-"} ${Math.abs(constant)} = ${rightSide}.`,
+          `Subtract ${constant} from both sides: ${coefficient}x = ${numerator}.`,
+          `Divide both sides by ${coefficient}.`,
+        ],
+      };
+    }
+  }
+
+  if (/\b(?:derivative|differentiate)\b/i.test(compact)) {
+    return {
+      title: "Derivative setup",
+      result: "Use the power rule: d/dx[x^n] = n*x^(n-1).",
+      steps: ["Differentiate each term separately.", "Multiply each coefficient by its exponent, then reduce the exponent by 1."],
+    };
+  }
+
+  if (/\b(?:elasticity|supply|demand|revenue|cost|profit|marginal)\b/i.test(compact)) {
+    return {
+      title: "Economics calculation setup",
+      result: "Substitute the given values into the relevant economics equation.",
+      steps: ["Write the relationship first, such as profit = revenue - cost or elasticity = (% change in Q)/(% change in P).", "Substitute the provided quantities and units, then interpret the sign and size of the result."],
+    };
+  }
+
+  return null;
 }
 
 function extractSubjectLabel(prompt: string) {
