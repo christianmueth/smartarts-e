@@ -246,67 +246,132 @@ export async function generateEditorAssetsForClerkUser(input: {
   const count = clampResultCount(input.count);
   const images = await generateImages(prompt, count);
 
-  return Promise.all(images.map((image, index) => createEditorAssetRecordForClerkUser({
+  return createEditorAssetsOrTransientFallback({
     clerkUserId: input.clerkUserId,
-    title: buildAssetTitle(prompt, index, images.length),
-    imageUrl: image.dataUrl,
-    mimeType: image.mimeType,
+    images,
     assetType: "generated",
-    width: 1024,
-    height: 1024,
     prompt,
+    titleBuilder: (_, index) => buildAssetTitle(prompt, index, images.length),
     sourceAssetId: null,
-  })));
+  });
 }
 
 export async function editEditorAssetForClerkUser(input: {
   clerkUserId: string;
-  assetId: string;
+  assetId?: string | null;
+  sourceUrl?: string | null;
+  sourceTitle?: string | null;
   prompt: string;
   count?: number;
 }) {
-  const sourceAsset = await prisma.projectAsset.findFirst({
-    where: {
-      id: input.assetId,
-      kind: "image",
-      project: {
-        user: { clerkUserId: input.clerkUserId },
-      },
-    },
-    select: {
-      id: true,
-      title: true,
-      sourceUrl: true,
-    },
-  });
-
-  if (!sourceAsset) {
-    throw new Error("Source image not found.");
-  }
-
   const prompt = cleanText(input.prompt, 1600);
   if (!prompt) {
     throw new Error("An edit instruction is required.");
   }
 
+  const source = await resolveEditorEditSource(input);
+  if (!source) {
+    throw new Error("Source image not found.");
+  }
+
   const count = clampResultCount(input.count);
   const images = await editImages({
     prompt,
-    sourceUrl: sourceAsset.sourceUrl,
+    sourceUrl: source.sourceUrl,
     count,
   });
 
-  return Promise.all(images.map((image, index) => createEditorAssetRecordForClerkUser({
+  return createEditorAssetsOrTransientFallback({
     clerkUserId: input.clerkUserId,
-    title: buildAssetTitle(`${sourceAsset.title} edit`, index, images.length),
-    imageUrl: image.dataUrl,
-    mimeType: image.mimeType,
+    images,
     assetType: "edited",
-    width: 1024,
-    height: 1024,
     prompt,
-    sourceAssetId: sourceAsset.id,
-  })));
+    titleBuilder: (_, index) => buildAssetTitle(`${source.title} edit`, index, images.length),
+    sourceAssetId: source.id,
+  });
+}
+
+async function resolveEditorEditSource(input: {
+  clerkUserId: string;
+  assetId?: string | null;
+  sourceUrl?: string | null;
+  sourceTitle?: string | null;
+}) {
+  const fallbackSourceUrl = cleanNullableUrl(input.sourceUrl);
+  const fallbackSourceTitle = cleanText(input.sourceTitle, 120) || "Easy Easel image";
+  const assetId = cleanText(input.assetId, 120);
+
+  if (assetId) {
+    try {
+      const sourceAsset = await prisma.projectAsset.findFirst({
+        where: {
+          id: assetId,
+          kind: "image",
+          project: {
+            user: { clerkUserId: input.clerkUserId },
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          sourceUrl: true,
+        },
+      });
+
+      if (sourceAsset) {
+        return sourceAsset;
+      }
+    } catch (error) {
+      if (!isPrismaUnavailableError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (!fallbackSourceUrl) {
+    return null;
+  }
+
+  return {
+    id: assetId || null,
+    title: fallbackSourceTitle,
+    sourceUrl: fallbackSourceUrl,
+  };
+}
+
+async function createEditorAssetsOrTransientFallback(input: {
+  clerkUserId: string;
+  images: Array<{ dataUrl: string; mimeType: string }>;
+  assetType: EditorAssetType;
+  prompt: string | null;
+  titleBuilder: (image: { dataUrl: string; mimeType: string }, index: number) => string;
+  sourceAssetId: string | null;
+}) {
+  try {
+    return await Promise.all(input.images.map((image, index) => createEditorAssetRecordForClerkUser({
+      clerkUserId: input.clerkUserId,
+      title: input.titleBuilder(image, index),
+      imageUrl: image.dataUrl,
+      mimeType: image.mimeType,
+      assetType: input.assetType,
+      width: 1024,
+      height: 1024,
+      prompt: input.prompt,
+      sourceAssetId: input.sourceAssetId,
+    })));
+  } catch (error) {
+    if (!isPrismaUnavailableError(error)) {
+      throw error;
+    }
+
+    return input.images.map((image, index) => buildTransientEditorAsset({
+      title: input.titleBuilder(image, index),
+      imageUrl: image.dataUrl,
+      assetType: input.assetType,
+      prompt: input.prompt,
+      sourceAssetId: input.sourceAssetId,
+    }));
+  }
 }
 
 async function createEditorAssetRecordForClerkUser(input: {
@@ -443,6 +508,32 @@ function isEditorLibraryAsset(metadata: unknown, projectStatus: string) {
 
   const record = asRecord(metadata);
   return record.saved === true;
+}
+
+function buildTransientEditorAsset(input: {
+  title: string;
+  imageUrl: string;
+  assetType: EditorAssetType;
+  prompt: string | null;
+  sourceAssetId: string | null;
+}): EditorAsset {
+  return {
+    id: `transient-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: cleanText(input.title, 120) || "Easy Easel image",
+    imageUrl: input.imageUrl,
+    type: input.assetType,
+    isSaved: false,
+    sourceAssetId: input.sourceAssetId,
+    prompt: input.prompt,
+    width: 1024,
+    height: 1024,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function isPrismaUnavailableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /Prisma client is unavailable in this environment/i.test(message) || /Cannot find module '@prisma\/client'/i.test(message);
 }
 
 function normalizeEditorCanvas(value: unknown): EditorCanvasDocument {

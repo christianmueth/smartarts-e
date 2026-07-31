@@ -13,15 +13,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await req.json()) as { assetId?: string; prompt?: string; count?: number };
+    const body = (await req.json()) as { assetId?: string; sourceUrl?: string; sourceTitle?: string; prompt?: string; count?: number };
     const assetId = String(body.assetId || "").trim();
-    if (!assetId) {
+    const sourceUrl = String(body.sourceUrl || "").trim();
+    if (!assetId && !sourceUrl) {
       return NextResponse.json({ ok: false, error: "Select an image layer first." }, { status: 400 });
     }
 
     const assets = await editEditorAssetForClerkUser({
       clerkUserId,
       assetId,
+      sourceUrl,
+      sourceTitle: body.sourceTitle || "",
       prompt: body.prompt || "",
       count: body.count,
     });

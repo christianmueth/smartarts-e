@@ -429,7 +429,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       return;
     }
 
-    if ((kind === "edit" || kind === "variation") && !selectedImageLayer?.assetId) {
+    if ((kind === "edit" || kind === "variation") && !selectedImageLayer?.src) {
       toast.error("Select an image layer first.");
       return;
     }
@@ -448,6 +448,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
           ? { prompt: trimmedPrompt, count: 1 }
           : {
               assetId: selectedImageLayer?.assetId,
+              sourceUrl: selectedImageLayer?.src,
+              sourceTitle: selectedImageLayer?.name,
               prompt: kind === "variation"
                 ? `${trimmedPrompt}. Create 4 variations and keep the original subject readable.`
                 : trimmedPrompt,
