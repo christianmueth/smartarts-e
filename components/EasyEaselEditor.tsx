@@ -521,26 +521,30 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   }
 
   async function requestEaselAssistPlan(prompt: string) {
-    const response = await fetch("/api/easel/assist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        document: {
-          width: documentRef.current.width,
-          height: documentRef.current.height,
-          backgroundColor: documentRef.current.backgroundColor,
-          layerCount: documentRef.current.layers.length,
-        },
-        layers: buildAssistLayerCandidates(),
-        selectedLayer: buildSelectedLayerForAssist(),
-      }),
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.ok || !data?.plan) {
-      throw new Error(data?.error || "Easel assist failed.");
+    try {
+      const response = await fetch("/api/easel/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          document: {
+            width: documentRef.current.width,
+            height: documentRef.current.height,
+            backgroundColor: documentRef.current.backgroundColor,
+            layerCount: documentRef.current.layers.length,
+          },
+          layers: buildAssistLayerCandidates(),
+          selectedLayer: buildSelectedLayerForAssist(),
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data?.plan) {
+        throw new Error(data?.error || "Easel assist failed.");
+      }
+      return data.plan as EditorAssistPlan;
+    } catch (error) {
+      return buildLocalCanvasFallbackPlan(prompt, buildSelectedLayerForAssist(), documentRef.current);
     }
-    return data.plan as EditorAssistPlan;
   }
 
   async function animateAssistantCursor(action: EditorAssistAction) {
@@ -1407,4 +1411,279 @@ function shouldIgnoreEditorShortcut(target: EventTarget | null) {
 
   const tagName = target.tagName;
   return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
+}
+
+function buildLocalCanvasFallbackPlan(
+  prompt: string,
+  selectedLayer: EditorAssistSelectedLayer | null,
+  document: EditorCanvasDocument
+): EditorAssistPlan {
+  const lower = prompt.toLowerCase();
+  const target = getAssistTargetBounds(document, selectedLayer);
+
+  if (/flower/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Sketching a flower with easel tools.",
+      actions: buildFlowerAssistActions(document),
+    };
+  }
+
+  if (/heart/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Sketching a heart with easel tools.",
+      actions: buildHeartAssistActions(document),
+    };
+  }
+
+  if (/sun/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Sketching a sun with easel tools.",
+      actions: buildSunAssistActions(document),
+    };
+  }
+
+  if (selectedLayer && /(highlight|box|outline|frame)/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Highlighting the selection on the easel.",
+      actions: [{
+        tool: "rect",
+        label: "Highlight",
+        x: target.x,
+        y: target.y,
+        width: target.width,
+        height: target.height,
+        stroke: "#ff5fb2",
+        fill: "rgba(255,95,178,0.14)",
+        strokeWidth: 6,
+      }],
+    };
+  }
+
+  if (selectedLayer && /(circle|oval|encircle|ring around)/.test(lower)) {
+    return {
+      mode: "canvas",
+      assistantMessage: "Circling the selection on the easel.",
+      actions: [{
+        tool: "ellipse",
+        label: "Circle",
+        x: target.x,
+        y: target.y,
+        width: target.width,
+        height: target.height,
+        stroke: "#ff5fb2",
+        fill: "rgba(255,95,178,0.08)",
+        strokeWidth: 5,
+      }],
+    };
+  }
+
+  if (selectedLayer && /(point|arrow|call out)/.test(lower)) {
+    const centerX = target.x + target.width / 2;
+    const centerY = target.y + target.height / 2;
+    return {
+      mode: "canvas",
+      assistantMessage: "Pointing to the selection on the easel.",
+      actions: [{
+        tool: "arrow",
+        label: "Arrow",
+        points: buildArrowAssistPoints(target.x - 80, target.y - 50, centerX, centerY),
+        stroke: "#ff8a5b",
+        strokeWidth: 8,
+      }],
+    };
+  }
+
+  if (selectedLayer && /(underline|line under|mark beneath)/.test(lower)) {
+    const y = Math.min(document.height - 8, target.y + target.height + 16);
+    return {
+      mode: "canvas",
+      assistantMessage: "Underlining the selection on the easel.",
+      actions: [{
+        tool: "brush",
+        label: "Underline",
+        points: [target.x, y, target.x + target.width * 0.4, y + 1, target.x + target.width, y],
+        stroke: "#ff8a5b",
+        strokeWidth: 10,
+      }],
+    };
+  }
+
+  if (selectedLayer && /(erase|remove|clear)/.test(lower)) {
+    const centerY = target.y + target.height / 2;
+    return {
+      mode: "canvas",
+      assistantMessage: "Erasing across the selection on the easel.",
+      actions: [{
+        tool: "eraser",
+        label: "Erase",
+        points: [target.x, centerY, target.x + target.width * 0.5, centerY - 4, target.x + target.width, centerY + 2],
+        strokeWidth: Math.max(20, Math.round(target.height * 0.24)),
+      }],
+    };
+  }
+
+  const text = extractFallbackText(prompt);
+  const width = Math.max(220, Math.min(document.width - 60, text.length * 22 + 120));
+  const x = Math.max(24, Math.min(document.width - width - 24, document.width / 2 - width / 2));
+  const y = selectedLayer ? Math.max(24, target.y - 84) : Math.max(24, document.height * 0.18);
+  return {
+    mode: "canvas",
+    assistantMessage: "Translating the prompt into easel markup tools.",
+    actions: [
+      {
+        tool: "rect",
+        label: "Prompt box",
+        x,
+        y,
+        width,
+        height: 108,
+        stroke: "#ff8a5b",
+        fill: "rgba(255,241,196,0.58)",
+        strokeWidth: 4,
+      },
+      {
+        tool: "text",
+        label: "Prompt note",
+        text,
+        x: x + 24,
+        y: y + 26,
+        width: width - 48,
+        fontSize: 36,
+        color: "#7a1f4f",
+      },
+      {
+        tool: "brush",
+        label: "Accent underline",
+        points: [x + 20, y + 86, x + width * 0.42, y + 90, x + width - 22, y + 86],
+        stroke: "#ff5fb2",
+        strokeWidth: 7,
+      },
+    ],
+  };
+}
+
+function buildFlowerAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.42;
+  const offsets = [
+    { x: -56, y: -10 },
+    { x: 10, y: -56 },
+    { x: 76, y: -10 },
+    { x: 10, y: 36 },
+  ];
+  return [
+    ...offsets.map((offset, index) => ({
+      tool: "ellipse" as const,
+      label: `Petal ${index + 1}`,
+      x: centerX + offset.x,
+      y: centerY + offset.y,
+      width: 96,
+      height: 64,
+      stroke: "#ff5fb2",
+      fill: "rgba(255,182,214,0.42)",
+      strokeWidth: 4,
+    })),
+    {
+      tool: "ellipse",
+      label: "Flower center",
+      x: centerX + 14,
+      y: centerY + 8,
+      width: 48,
+      height: 48,
+      stroke: "#ffb200",
+      fill: "rgba(255,214,82,0.75)",
+      strokeWidth: 4,
+    },
+    {
+      tool: "brush",
+      label: "Stem",
+      points: [centerX + 38, centerY + 54, centerX + 30, centerY + 126, centerX + 24, centerY + 188],
+      stroke: "#2ca24f",
+      strokeWidth: 10,
+    },
+  ];
+}
+
+function buildHeartAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.38;
+  return [{
+    tool: "brush",
+    label: "Heart",
+    points: [centerX, centerY + 110, centerX - 92, centerY + 20, centerX - 54, centerY - 48, centerX, centerY - 2, centerX + 54, centerY - 48, centerX + 92, centerY + 20, centerX, centerY + 110],
+    stroke: "#ff5fb2",
+    strokeWidth: 10,
+  }];
+}
+
+function buildSunAssistActions(document: EditorCanvasDocument): EditorAssistAction[] {
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.34;
+  return [
+    {
+      tool: "ellipse",
+      label: "Sun",
+      x: centerX - 54,
+      y: centerY - 54,
+      width: 108,
+      height: 108,
+      stroke: "#ffb200",
+      fill: "rgba(255,214,82,0.55)",
+      strokeWidth: 5,
+    },
+    {
+      tool: "brush",
+      label: "Rays",
+      points: [centerX, centerY - 92, centerX, centerY - 132, centerX + 62, centerY - 62, centerX + 90, centerY - 90, centerX + 92, centerY, centerX + 132, centerY, centerX + 62, centerY + 62, centerX + 90, centerY + 90, centerX, centerY + 92, centerX, centerY + 132, centerX - 62, centerY + 62, centerX - 90, centerY + 90, centerX - 92, centerY, centerX - 132, centerY, centerX - 62, centerY - 62, centerX - 90, centerY - 90],
+      stroke: "#ffb200",
+      strokeWidth: 6,
+    },
+  ];
+}
+
+function extractFallbackText(prompt: string) {
+  const quoted = prompt.match(/["“]([^"”]{1,80})["”]/);
+  if (quoted?.[1]) {
+    return quoted[1].trim();
+  }
+  const cleaned = prompt.replace(/^(draw|make|create|generate|sketch|paint|add|show)\s+/i, "").replace(/^(a|an|the)\s+/i, "").trim();
+  const normalized = cleaned || prompt.trim() || "Canvas note";
+  const shortened = normalized.length > 48 ? `${normalized.slice(0, 45).trim()}...` : normalized;
+  return shortened.charAt(0).toUpperCase() + shortened.slice(1);
+}
+
+function getAssistTargetBounds(document: EditorCanvasDocument, selectedLayer: EditorAssistSelectedLayer | null) {
+  if (!selectedLayer) {
+    const width = Math.min(360, document.width * 0.5);
+    const height = Math.min(220, document.height * 0.3);
+    return {
+      x: document.width / 2 - width / 2,
+      y: document.height / 2 - height / 2,
+      width,
+      height,
+    };
+  }
+  const pad = 18;
+  return {
+    x: Math.max(0, selectedLayer.x - pad),
+    y: Math.max(0, selectedLayer.y - pad),
+    width: Math.min(document.width, selectedLayer.width + pad * 2),
+    height: Math.min(document.height, selectedLayer.height + pad * 2),
+  };
+}
+
+function buildArrowAssistPoints(x1: number, y1: number, x2: number, y2: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const angle = Math.atan2(dy, dx);
+  const headLength = Math.max(18, Math.min(36, Math.hypot(dx, dy) * 0.18));
+  const leftX = x2 - headLength * Math.cos(angle - Math.PI / 6);
+  const leftY = y2 - headLength * Math.sin(angle - Math.PI / 6);
+  const rightX = x2 - headLength * Math.cos(angle + Math.PI / 6);
+  const rightY = y2 - headLength * Math.sin(angle + Math.PI / 6);
+  return [x1, y1, x2, y2, leftX, leftY, x2, y2, rightX, rightY];
 }
