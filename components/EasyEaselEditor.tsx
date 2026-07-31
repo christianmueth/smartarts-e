@@ -61,6 +61,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const selectionGestureRef = useRef<{ x: number; y: number; mode: "rect" | "lasso" } | null>(null);
   const selectionDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; anchorId: string } | null>(null);
   const selectionBoundsDragRef = useRef<{ layerIds: string[]; originById: Record<string, { x: number; y: number }>; startX: number; startY: number } | null>(null);
+  const lastStagePointerDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const selectedLayer = useMemo(
     () => document.layers.find((layer) => layer.id === selectedLayerId) ?? document.layers.find((layer) => selectedLayerIds.includes(layer.id)) ?? null,
@@ -100,6 +101,18 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
       const isMeta = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+
+      if (key === "escape") {
+        event.preventDefault();
+        setSelection([], null);
+        setSelectionRect(null);
+        setLassoPoints([]);
+        selectionGestureRef.current = null;
+        selectionDragRef.current = null;
+        selectionBoundsDragRef.current = null;
+        cropAnchorRef.current = null;
+        return;
+      }
 
       if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerIds.length) {
         event.preventDefault();
@@ -554,7 +567,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
     if (tool === "select" && isStageTarget) {
       const wantsLasso = event.evt.altKey;
-      const wantsRangeSelection = wantsLasso || event.evt.detail >= 2 || event.evt.shiftKey;
+      const lastPointerDown = lastStagePointerDownRef.current;
+      const isRapidSecondPress = Boolean(
+        lastPointerDown
+        && Date.now() - lastPointerDown.time < 360
+        && Math.hypot(point.x - lastPointerDown.x, point.y - lastPointerDown.y) < 16
+      );
+      lastStagePointerDownRef.current = { x: point.x, y: point.y, time: Date.now() };
+      const wantsRangeSelection = wantsLasso || isRapidSecondPress || event.evt.detail >= 2 || event.evt.shiftKey;
       if (!wantsRangeSelection) {
         setSelection([], null);
         return;
@@ -1335,7 +1355,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     Prompts here only use easel tools. Ask it to write text, explain a topic on-canvas, add boxes or circles, point with arrows, brush marks, or erase directly on the canvas.
                   </p>
                   <p className="text-xs leading-6 text-pink-400">
-                    In select mode, shift-drag or double-drag on empty canvas to grab a group. Hold Alt while dragging to lasso-select layers.
+                    In select mode, shift-drag or double-click-drag on empty canvas to grab a group. Hold Alt while dragging to lasso-select layers. Press Escape to clear the selection.
                   </p>
                 </div>
               </details>
