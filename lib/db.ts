@@ -1,4 +1,5 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -13,12 +14,7 @@ if (process.env.NODE_ENV !== "production") global.prisma = prisma;
 
 function createPrismaClient(): PrismaClient {
   try {
-    const runtimeRequire = eval("require") as NodeRequire;
-    const { PrismaClient: RuntimePrismaClient } = runtimeRequire("@prisma/client") as {
-      PrismaClient: new (options: { log: string[] }) => PrismaClient;
-    };
-
-    return new RuntimePrismaClient({
+    return new PrismaClient({
       log: ["warn", "error"],
     });
   } catch (error) {

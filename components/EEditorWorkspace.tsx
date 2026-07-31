@@ -154,7 +154,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
       return;
     }
     if (tool === "text") {
-      const layer: EditorLayer = { id: createId("text"), name: "Text", type: "text", x: point.x, y: point.y, width: 260, height: 48, rotation: 0, opacity: 1, visible: true, text: "Text", color: "#20312b" };
+      const layer: EditorLayer = { id: createId("text"), name: "Text", type: "text", x: point.x, y: point.y, width: 260, height: 48, rotation: 0, opacity: 1, visible: true, text: "Text", color: "#7a1f4f" };
       commitLayers([...layersRef.current, layer], "Add text");
       setSelectedLayerId(layer.id);
       return;
@@ -201,7 +201,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
         opacity: 1,
         visible: true,
         points: draftPoints,
-        color: isEraser ? "#ffffff" : "#1b8477",
+        color: isEraser ? "#ffffff" : "#d63384",
       };
       commitLayers([...layersRef.current, layer], isEraser ? "Erase mark" : "Brush stroke");
       setSelectedLayerId(layer.id);
@@ -304,7 +304,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
       updateLayerById(versionLayer.id, (current) => ({ ...current, src: asset.imageUrl, assetId: asset.id, filter: undefined }), label);
       toast.success(`${label} created as a new layer.`);
     } catch (error) {
-      toast.message(`${label} preview created as a new layer.`, { description: error instanceof Error ? error.message : undefined });
+      toast.message(`${label} preview created as a new layer.`, { description: "The rendered AI version will be available when the image service is connected." });
     } finally {
       setRunningAiAction(null);
     }
@@ -325,7 +325,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
     exportCanvas.height = CANVAS_HEIGHT;
     const context = exportCanvas.getContext("2d");
     if (!context) return;
-    context.fillStyle = "#f8f8f3";
+    context.fillStyle = "#fffafc";
     context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     try {
       for (const layer of layers.filter((item) => item.visible)) {
@@ -337,14 +337,14 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
           const image = await loadImage(layer.src);
           context.drawImage(image, -layer.width / 2, -layer.height / 2, layer.width, layer.height);
         } else if (layer.type === "text") {
-          context.fillStyle = layer.color || "#20312b";
+          context.fillStyle = layer.color || "#7a1f4f";
           context.font = "600 32px Manrope";
           context.fillText(layer.text || "Text", -layer.width / 2, 10, layer.width);
         } else if (layer.type === "shape") {
           context.fillStyle = layer.color || "#ff7b5c";
           context.fillRect(-layer.width / 2, -layer.height / 2, layer.width, layer.height);
         } else if (layer.type === "drawing" && layer.points?.length) {
-          context.strokeStyle = layer.color || "#1b8477";
+          context.strokeStyle = layer.color || "#d63384";
           context.lineWidth = 12;
           context.lineCap = "round";
           context.beginPath();
@@ -363,27 +363,27 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
   }
 
   return (
-    <main className="min-h-[calc(100vh-4.5rem)] bg-[#eef1eb] px-3 py-3 text-[#20312b] sm:px-5">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 border-b border-[#cfd8ce] pb-3">
+    <main className="min-h-[calc(100vh-4.5rem)] bg-[linear-gradient(135deg,#fff7fb_0%,#fffef4_48%,#fff2f8_100%)] px-3 py-3 text-[#7a1f4f] sm:px-5">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 border-b border-pink-200 pb-3">
         <div>
           <h1 className="text-lg font-semibold tracking-normal">E-Editor</h1>
-          <p className="text-xs text-[#5c6c63]">Image editing with non-destructive AI versions</p>
+          <p className="text-xs text-pink-600">Image editing with non-destructive AI versions</p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" title="Undo" onClick={undo} disabled={historyIndex === 0} className="grid h-9 w-9 place-items-center border border-[#b9c8bd] bg-white text-lg disabled:opacity-35">↶</button>
-          <button type="button" title="Redo" onClick={redo} disabled={historyIndex === history.length - 1} className="grid h-9 w-9 place-items-center border border-[#b9c8bd] bg-white text-lg disabled:opacity-35">↷</button>
-          <button type="button" onClick={() => void exportImage("png")} className="border border-[#b9c8bd] bg-white px-3 py-2 text-xs font-semibold">PNG</button>
-          <button type="button" onClick={() => void exportImage("jpeg")} className="border border-[#b9c8bd] bg-white px-3 py-2 text-xs font-semibold">JPG</button>
-          <button type="button" onClick={saveProject} className="bg-[#1b8477] px-3 py-2 text-xs font-semibold text-white">Save project</button>
+          <button type="button" title="Undo" onClick={undo} disabled={historyIndex === 0} className="grid h-9 w-9 place-items-center rounded-md border border-pink-200 bg-white text-lg disabled:opacity-35">↶</button>
+          <button type="button" title="Redo" onClick={redo} disabled={historyIndex === history.length - 1} className="grid h-9 w-9 place-items-center rounded-md border border-pink-200 bg-white text-lg disabled:opacity-35">↷</button>
+          <button type="button" onClick={() => void exportImage("png")} className="rounded-md border border-pink-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-pink-50">PNG</button>
+          <button type="button" onClick={() => void exportImage("jpeg")} className="rounded-md border border-pink-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-pink-50">JPG</button>
+          <button type="button" onClick={saveProject} className="rounded-md bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(255,95,178,0.25)]">Save project</button>
         </div>
       </div>
 
       <div className="mx-auto grid max-w-[1600px] gap-3 py-3 xl:grid-cols-[68px_minmax(0,1fr)_330px]">
-        <aside className="flex flex-row gap-1 border border-[#cfd8ce] bg-[#f8f9f5] p-1 xl:flex-col xl:items-center">
-          {tools.map((item) => <button key={item.id} type="button" title={item.label} onClick={() => setTool(item.id)} className={tool === item.id ? "grid h-11 w-11 place-items-center bg-[#1b8477] text-lg text-white" : "grid h-11 w-11 place-items-center text-lg hover:bg-[#dce8df]"}>{item.symbol}</button>)}
+        <aside className="flex flex-row gap-1 rounded-lg border border-pink-200 bg-white/85 p-1 shadow-[0_12px_30px_rgba(255,129,181,0.12)] xl:flex-col xl:items-center">
+          {tools.map((item) => <button key={item.id} type="button" title={item.label} onClick={() => setTool(item.id)} className={tool === item.id ? "grid h-11 w-11 place-items-center rounded-md bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] text-lg text-white" : "grid h-11 w-11 place-items-center rounded-md text-lg hover:bg-pink-50"}>{item.symbol}</button>)}
         </aside>
 
-        <section className="min-w-0 overflow-auto border border-[#cfd8ce] bg-[#dfe7df] p-4">
+        <section className="min-w-0 overflow-auto rounded-lg border border-pink-200 bg-[linear-gradient(135deg,#fff1f7,#fff8df)] p-4 shadow-[0_16px_42px_rgba(255,129,181,0.12)]">
           <div
             ref={canvasRef}
             onPointerDown={handleCanvasPointerDown}
@@ -397,45 +397,45 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
               const item = library.find((asset) => asset.id === assetId);
               if (item) addImage(item, canvasPoint(event as unknown as PointerEvent<HTMLDivElement>));
             }}
-            className="relative mx-auto aspect-[25/16] w-full min-w-[680px] max-w-[1000px] overflow-hidden bg-[#f8f8f3] shadow-[0_14px_26px_rgba(36,61,48,0.18)]"
+            className="relative mx-auto aspect-[25/16] w-full min-w-[680px] max-w-[1000px] overflow-hidden rounded-md bg-[#fffafc] shadow-[0_14px_26px_rgba(122,31,79,0.18)]"
           >
-            <div className="pointer-events-none absolute inset-0 opacity-[0.32] [background-image:linear-gradient(#cdd9cf_1px,transparent_1px),linear-gradient(90deg,#cdd9cf_1px,transparent_1px)] [background-size:40px_40px]" />
+            <div className="pointer-events-none absolute inset-0 opacity-[0.28] [background-image:linear-gradient(#f4cadc_1px,transparent_1px),linear-gradient(90deg,#f4cadc_1px,transparent_1px)] [background-size:40px_40px]" />
             {layers.filter((layer) => layer.visible).map((layer) => <CanvasLayer key={layer.id} layer={layer} selected={layer.id === selectedLayerId} onPointerDown={(event) => beginLayerPointer(event, layer)} />)}
-            {draftPoints?.length ? <svg className="pointer-events-none absolute inset-0 h-full w-full"><polyline points={draftPoints.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={tool === "eraser" ? "#ffffff" : "#1b8477"} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+            {draftPoints?.length ? <svg className="pointer-events-none absolute inset-0 h-full w-full"><polyline points={draftPoints.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={tool === "eraser" ? "#ffffff" : "#d63384"} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
           </div>
         </section>
 
         <aside className="space-y-3">
-          <section className="border border-[#cfd8ce] bg-[#f8f9f5] p-3">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Image library</h2><button type="button" onClick={() => inputRef.current?.click()} className="border border-[#b9c8bd] bg-white px-2 py-1 text-xs font-semibold">Upload</button></div>
+          <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Image library</h2><button type="button" onClick={() => inputRef.current?.click()} className="rounded-md border border-pink-200 bg-pink-50 px-2 py-1 text-xs font-semibold text-pink-700 hover:bg-pink-100">Upload</button></div>
             <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void uploadImage(event.target.files?.[0] || null)} />
             <div className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto">
-              {library.length ? library.map((asset) => <button key={asset.id} type="button" draggable onDragStart={(event) => event.dataTransfer.setData("e-editor-asset", asset.id)} onClick={() => addImage(asset)} title={`Place ${asset.title}`} className="aspect-square overflow-hidden border border-[#cfd8ce] bg-white"><img src={asset.imageUrl} alt={asset.title} className="h-full w-full object-cover" /></button>) : <p className="col-span-4 py-4 text-center text-xs text-[#5c6c63]">Upload or drag an image here.</p>}
+              {library.length ? library.map((asset) => <button key={asset.id} type="button" draggable onDragStart={(event) => event.dataTransfer.setData("e-editor-asset", asset.id)} onClick={() => addImage(asset)} title={`Place ${asset.title}`} className="aspect-square overflow-hidden rounded-md border border-pink-200 bg-white"><img src={asset.imageUrl} alt={asset.title} className="h-full w-full object-cover" /></button>) : <p className="col-span-4 py-4 text-center text-xs text-pink-600">Upload or drag an image here.</p>}
             </div>
           </section>
 
-          <section className="border border-[#cfd8ce] bg-[#f8f9f5] p-3">
+          <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
             <h2 className="mb-2 text-sm font-semibold">AI actions</h2>
-            <textarea value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Describe the edit" className="mb-2 min-h-16 w-full resize-none border border-[#b9c8bd] bg-white p-2 text-xs outline-none focus:border-[#1b8477]" />
+            <textarea value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Describe the edit" className="mb-2 min-h-16 w-full resize-none rounded-md border border-pink-200 bg-white p-2 text-xs outline-none focus:border-pink-500" />
             <div className="grid grid-cols-2 gap-1">
-              {aiActions.map(([id, label]) => <button key={id} type="button" onClick={() => void runAiAction(id, label)} disabled={runningAiAction !== null} className="border border-[#b9c8bd] bg-white px-2 py-2 text-left text-xs font-medium hover:bg-[#e4f1e9] disabled:opacity-40">{runningAiAction === id ? "Working..." : label}</button>)}
+              {aiActions.map(([id, label]) => <button key={id} type="button" onClick={() => void runAiAction(id, label)} disabled={runningAiAction !== null} className="rounded-md border border-pink-200 bg-white px-2 py-2 text-left text-xs font-medium hover:bg-pink-50 disabled:opacity-40">{runningAiAction === id ? "Working..." : label}</button>)}
             </div>
           </section>
 
-          {selectedLayer ? <section className="border border-[#cfd8ce] bg-[#f8f9f5] p-3">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Selection</h2><span className="text-xs text-[#5c6c63]">{selectedLayer.type}</span></div>
-            {selectedLayer.type === "text" ? <input value={selectedLayer.text || ""} onChange={(event) => updateSelected((layer) => ({ ...layer, text: event.target.value }), "Edit text")} className="mb-2 w-full border border-[#b9c8bd] bg-white p-2 text-xs" /> : null}
+          {selectedLayer ? <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Selection</h2><span className="text-xs text-pink-600">{selectedLayer.type}</span></div>
+            {selectedLayer.type === "text" ? <input value={selectedLayer.text || ""} onChange={(event) => updateSelected((layer) => ({ ...layer, text: event.target.value }), "Edit text")} className="mb-2 w-full rounded-md border border-pink-200 bg-white p-2 text-xs" /> : null}
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <label>Size<input type="range" min="80" max="760" value={selectedLayer.width} onChange={(event) => updateSelected((layer) => ({ ...layer, width: Number(event.target.value), height: Math.max(42, Number(event.target.value) * (layer.height / layer.width)) }), "Resize layer")} className="w-full accent-[#1b8477]" /></label>
-              <label>Rotate<input type="range" min="-180" max="180" value={selectedLayer.rotation} onChange={(event) => updateSelected((layer) => ({ ...layer, rotation: Number(event.target.value) }), "Rotate layer")} className="w-full accent-[#1b8477]" /></label>
-              <label className="col-span-2">Opacity<input type="range" min="0" max="1" step="0.05" value={selectedLayer.opacity} onChange={(event) => updateSelected((layer) => ({ ...layer, opacity: Number(event.target.value) }), "Adjust opacity")} className="w-full accent-[#1b8477]" /></label>
+              <label>Size<input type="range" min="80" max="760" value={selectedLayer.width} onChange={(event) => updateSelected((layer) => ({ ...layer, width: Number(event.target.value), height: Math.max(42, Number(event.target.value) * (layer.height / layer.width)) }), "Resize layer")} className="w-full accent-pink-500" /></label>
+              <label>Rotate<input type="range" min="-180" max="180" value={selectedLayer.rotation} onChange={(event) => updateSelected((layer) => ({ ...layer, rotation: Number(event.target.value) }), "Rotate layer")} className="w-full accent-pink-500" /></label>
+              <label className="col-span-2">Opacity<input type="range" min="0" max="1" step="0.05" value={selectedLayer.opacity} onChange={(event) => updateSelected((layer) => ({ ...layer, opacity: Number(event.target.value) }), "Adjust opacity")} className="w-full accent-pink-500" /></label>
             </div>
           </section> : null}
 
-          <section className="border border-[#cfd8ce] bg-[#f8f9f5] p-3">
+          <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
             <h2 className="mb-2 text-sm font-semibold">Layers</h2>
             <div className="max-h-48 space-y-1 overflow-y-auto">
-              {[...layers].reverse().map((layer) => <div key={layer.id} className={layer.id === selectedLayerId ? "flex items-center gap-1 border border-[#1b8477] bg-[#e4f1e9] p-1" : "flex items-center gap-1 border border-[#d7dfd6] bg-white p-1"}>
+              {[...layers].reverse().map((layer) => <div key={layer.id} className={layer.id === selectedLayerId ? "flex items-center gap-1 rounded-md border border-pink-400 bg-pink-50 p-1" : "flex items-center gap-1 rounded-md border border-pink-100 bg-white p-1"}>
                 <button type="button" title={layer.visible ? "Hide layer" : "Show layer"} onClick={() => updateLayerById(layer.id, (current) => ({ ...current, visible: !current.visible }), "Toggle layer visibility")} className="w-6 text-xs">{layer.visible ? "◉" : "○"}</button>
                 <button type="button" onClick={() => setSelectedLayerId(layer.id)} className="min-w-0 flex-1 truncate text-left text-xs">{layer.name}</button>
                 <button type="button" title="Raise layer" onClick={() => reorderLayer(layer.id, 1)} className="w-5 text-xs">↑</button>
@@ -446,9 +446,9 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
             </div>
           </section>
 
-          <section className="border border-[#cfd8ce] bg-[#f8f9f5] p-3">
+          <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
             <h2 className="mb-2 text-sm font-semibold">Version history</h2>
-            <div className="max-h-36 space-y-1 overflow-y-auto">{history.map((snapshot, index) => <button key={snapshot.id} type="button" onClick={() => restoreVersion(index)} className={index === historyIndex ? "block w-full bg-[#1b8477] px-2 py-1.5 text-left text-xs text-white" : "block w-full border border-[#d7dfd6] bg-white px-2 py-1.5 text-left text-xs"}>{index === 0 ? "Original" : `Edit ${index}`}: {snapshot.label}</button>)}</div>
+            <div className="max-h-36 space-y-1 overflow-y-auto">{history.map((snapshot, index) => <button key={snapshot.id} type="button" onClick={() => restoreVersion(index)} className={index === historyIndex ? "block w-full rounded-md bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-2 py-1.5 text-left text-xs text-white" : "block w-full rounded-md border border-pink-100 bg-white px-2 py-1.5 text-left text-xs hover:bg-pink-50"}>{index === 0 ? "Original" : `Edit ${index}`}: {snapshot.label}</button>)}</div>
           </section>
         </aside>
       </div>
@@ -459,7 +459,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
 function CanvasLayer({ layer, selected, onPointerDown }: { layer: EditorLayer; selected: boolean; onPointerDown: (event: PointerEvent<HTMLDivElement>) => void }) {
   const style = { left: `${(layer.x / CANVAS_WIDTH) * 100}%`, top: `${(layer.y / CANVAS_HEIGHT) * 100}%`, width: `${(layer.width / CANVAS_WIDTH) * 100}%`, height: `${(layer.height / CANVAS_HEIGHT) * 100}%`, transform: `rotate(${layer.rotation}deg)`, opacity: layer.opacity };
   if (layer.type === "drawing") return <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}><polyline points={layer.points?.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={layer.color} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-  return <div onPointerDown={onPointerDown} className={selected ? "absolute cursor-move border-2 border-[#1b8477]" : "absolute cursor-move border-2 border-transparent"} style={style}>
+  return <div onPointerDown={onPointerDown} className={selected ? "absolute cursor-move border-2 border-pink-500" : "absolute cursor-move border-2 border-transparent"} style={style}>
     {layer.type === "image" ? <img src={layer.src} alt={layer.name} draggable={false} className="h-full w-full object-cover" style={{ filter: layer.filter, clipPath: layer.crop ? `inset(${layer.crop * 100}%)` : undefined }} /> : null}
     {layer.type === "text" ? <div className="h-full w-full px-2 text-3xl font-semibold" style={{ color: layer.color }}>{layer.text}</div> : null}
     {layer.type === "shape" ? <div className="h-full w-full" style={{ background: layer.color }} /> : null}
