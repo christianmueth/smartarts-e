@@ -1251,14 +1251,13 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   ref={stageRef}
                   width={canvasWidth}
                   height={canvasHeight}
-                  scaleX={zoom}
-                  scaleY={zoom}
                   onMouseDown={handleStageMouseDown}
                   onMouseMove={handleStageMouseMove}
                   onMouseUp={handleStageMouseUp}
                   className="rounded-[1.25rem] bg-white shadow-[0_16px_40px_rgba(255,199,223,0.4)]"
                 >
                   <Layer>
+                    <Group scaleX={zoom} scaleY={zoom}>
                     <Rect width={document.width} height={document.height} fill={document.backgroundColor} listening={false} />
                     {document.layers.map((layer) => renderLayer({
                       layer,
@@ -1341,6 +1340,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                       </Group>
                     ) : null}
                     <Transformer ref={transformerRef} rotateEnabled anchorCornerRadius={12} borderStroke="#ff5fb2" anchorFill="#fff7fb" anchorStroke="#ff5fb2" />
+                    </Group>
                   </Layer>
                 </Stage>
                   </div>
@@ -1654,20 +1654,7 @@ function summarizeProject(project: EditorProjectDetail): EditorProjectSummary {
 
 function getStageDataUrl(stage: Konva.Stage | null, mimeType: string, zoom: number) {
   if (!stage) return null;
-  const previousScaleX = stage.scaleX();
-  const previousScaleY = stage.scaleY();
-  const previousWidth = stage.width();
-  const previousHeight = stage.height();
-  const documentWidth = Math.round(previousWidth / (previousScaleX || zoom || 1));
-  const documentHeight = Math.round(previousHeight / (previousScaleY || zoom || 1));
-  stage.size({ width: documentWidth, height: documentHeight });
-  stage.scale({ x: 1, y: 1 });
-  stage.batchDraw();
-  const dataUrl = stage.toDataURL({ pixelRatio: 2, mimeType });
-  stage.size({ width: previousWidth, height: previousHeight });
-  stage.scale({ x: previousScaleX || zoom, y: previousScaleY || zoom });
-  stage.batchDraw();
-  return dataUrl;
+  return stage.toDataURL({ pixelRatio: 2 / Math.max(zoom, 0.01), mimeType });
 }
 
 function getCanvasPointer(stage: Konva.Stage | null, zoom: number) {
