@@ -48,7 +48,7 @@ function appendPass(
 ) {
   for (let y = 0; y < sampling.rows; y += stride) {
     for (let x = 0; x < sampling.columns; x += stride) {
-      const pixel = getPixel(pixels, sampling.columns, x, y);
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
       if (!include(pixel, x, y) || pixel.alpha < 32) {
         continue;
       }
@@ -120,7 +120,6 @@ function brightness(pixel: Pixel) {
   return pixel.red * 0.2126 + pixel.green * 0.7152 + pixel.blue * 0.0722;
 }
 
-function isBackgroundPixel(pixel: Pixel, nearby: Pixel) {
 function isBackgroundPixel(pixel: Pixel, backgroundColors: Pixel[]) {
   return backgroundColors.some((background) => colorDistance(pixel, background) < 58);
 }
@@ -141,44 +140,46 @@ function isEdge(data: Uint8ClampedArray, columns: number, rows: number, x: numbe
 }
 
 function toColor(pixel: Pixel) {
-    return detailLevel === "study" ? "blur(1.8px)" : detailLevel === "refined" ? "blur(1.1px)" : "blur(0.6px)";
-  }
-
-  function getBackgroundColors(data: Uint8ClampedArray, columns: number, rows: number) {
-    return [
-      averagePixel(data, columns, rows, 0, 0),
-      averagePixel(data, columns, rows, columns - 1, 0),
-      averagePixel(data, columns, rows, 0, rows - 1),
-      averagePixel(data, columns, rows, columns - 1, rows - 1),
-    ];
-  }
-
-  function averagePixel(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number): Pixel {
-    let red = 0;
-    let green = 0;
-    let blue = 0;
-    let alpha = 0;
-    let count = 0;
-    for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
-      for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
-        const pixel = sample(data, columns, rows, x + xOffset, y + yOffset);
-        red += pixel.red;
-        green += pixel.green;
-        blue += pixel.blue;
-        alpha += pixel.alpha;
-        count += 1;
-      }
-    }
-    return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
-  }
-
-  function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number) {
-    const seed = x * 73856093 ^ y * 19349663 ^ pass.length * 83492791;
-    const horizontal = ((seed >>> 5) % 1000) / 1000 - 0.5;
-    const vertical = ((seed >>> 15) % 1000) / 1000 - 0.5;
-    return { x: horizontal * unit * 0.44, y: vertical * unit * 0.44 };
-  }
   return `rgb(${pixel.red}, ${pixel.green}, ${pixel.blue})`;
+}
+
+function detailBlur(detailLevel: EditorPaintDetailLevel) {
+  return detailLevel === "study" ? "blur(1.8px)" : detailLevel === "refined" ? "blur(1.1px)" : "blur(0.6px)";
+}
+
+function getBackgroundColors(data: Uint8ClampedArray, columns: number, rows: number) {
+  return [
+    averagePixel(data, columns, rows, 0, 0),
+    averagePixel(data, columns, rows, columns - 1, 0),
+    averagePixel(data, columns, rows, 0, rows - 1),
+    averagePixel(data, columns, rows, columns - 1, rows - 1),
+  ];
+}
+
+function averagePixel(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number): Pixel {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let alpha = 0;
+  let count = 0;
+  for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
+    for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
+      const pixel = sample(data, columns, rows, x + xOffset, y + yOffset);
+      red += pixel.red;
+      green += pixel.green;
+      blue += pixel.blue;
+      alpha += pixel.alpha;
+      count += 1;
+    }
+  }
+  return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
+}
+
+function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number) {
+  const seed = x * 73856093 ^ y * 19349663 ^ pass.length * 83492791;
+  const horizontal = ((seed >>> 5) % 1000) / 1000 - 0.5;
+  const vertical = ((seed >>> 15) % 1000) / 1000 - 0.5;
+  return { x: horizontal * unit * 0.44, y: vertical * unit * 0.44 };
 }
 
 function passLabel(pass: EditorPaintPass) {
