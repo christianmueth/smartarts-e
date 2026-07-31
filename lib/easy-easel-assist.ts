@@ -90,32 +90,32 @@ export async function planEasyEaselAssist(input: EaselAssistInput): Promise<Edit
   if (isMathPrompt(prompt)) {
     const mathPlan = await buildMathCanvasPlan({ ...input, prompt });
     if (mathPlan) {
-      return mathPlan;
+      return placeGeneratedPlan(mathPlan, { ...input, prompt });
     }
   }
   if (isExplanationPrompt(prompt)) {
     const explanationPlan = await buildExplanationCanvasPlan({ ...input, prompt });
     if (explanationPlan) {
-      return explanationPlan;
+      return placeGeneratedPlan(explanationPlan, { ...input, prompt });
     }
   }
 
   const heuristicPlan = buildHeuristicCanvasPlan({ ...input, prompt });
   if (heuristicPlan) {
-    return heuristicPlan;
+    return placeGeneratedPlan(heuristicPlan, { ...input, prompt });
   }
 
   const decomposition = isDoodlePrompt(prompt) ? await generateDoodleDecomposition(prompt) : null;
   const llmPlan = await planWithLlm({ ...input, prompt }, decomposition);
   if (llmPlan) {
-    return llmPlan;
+    return placeGeneratedPlan(llmPlan, { ...input, prompt });
   }
 
   if (isDoodlePrompt(prompt)) {
     throw new Error("General drawing is unavailable because the configured AI model could not return a valid object plan. Please restore the model provider and try again.");
   }
 
-  return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), prompt, input.document);
+  return placeGeneratedPlan(buildDeterministicFallbackCanvasPlan({ ...input, prompt }), { ...input, prompt });
 }
 
 async function buildMathCanvasPlan(input: EaselAssistInput): Promise<EditorAssistPlan | null> {
@@ -231,11 +231,7 @@ function buildHeuristicCanvasPlan(input: EaselAssistInput): EditorAssistPlan | n
 
   const sketchEntry = findSketchLexiconEntry(lower);
   if (sketchEntry) {
-      return placeGeneratedPlan(
-        sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message)),
-        input.prompt,
-        input.document
-      );
+    return sketchEntry.build(input, extractSketchStyle(lower, sketchEntry.message));
   }
 
   if (/(highlight|box|outline|frame)/.test(lower) && targetLayer) {
@@ -1169,10 +1165,10 @@ function buildMathSolutionLayout(
   };
 }
 
-function placeGeneratedPlan(plan: EditorAssistPlan, prompt: string, document: EaselAssistInput["document"]): EditorAssistPlan {
+function placeGeneratedPlan(plan: EditorAssistPlan, input: EaselAssistInput): EditorAssistPlan {
   const bounds = getActionBounds(plan.actions);
   if (!bounds) return plan;
-  const placement = resolvePlanPlacement(document, prompt, bounds.width, bounds.height);
+  const placement = resolveUnoccupiedPlacement(input, bounds.width, bounds.height);
   const dx = placement.x - bounds.x;
   const dy = placement.y - bounds.y;
   return {
@@ -1188,52 +1184,51 @@ function placeGeneratedPlan(plan: EditorAssistPlan, prompt: string, document: Ea
   };
 }
 
-function resolvePlanPlacement(document: EaselAssistInput["document"], prompt: string, width: number, height: number) {
-  const padding = 28;
-  const maxX = Math.max(padding, document.width - width - padding);
-  const maxY = Math.max(padding, document.height - height - padding);
-  const location = readRequestedLocation(prompt);
-  if (location) {
-    const x = location.horizontal === "left" ? padding : location.horizontal === "right" ? maxX : (document.width - width) / 2;
-    const y = location.vertical === "top" ? padding : location.vertical === "bottom" ? maxY : (document.height - height) / 2;
-    return { x: Math.round(clamp(x, padding, maxX)), y: Math.round(clamp(y, padding, maxY)) };
-  }
-
-  const seed = hashText(`${prompt}:${document.layerCount}:${document.width}:${document.height}`);
-  const xRatio = (seed % 1000) / 1000;
-  const yRatio = (Math.floor(seed / 1000) % 1000) / 1000;
-  return {
-    x: Math.round(padding + xRatio * (maxX - padding)),
-    y: Math.round(padding + yRatio * (maxY - padding)),
-  };
-}
-
-function resolveTeachingPlacement(input: EaselAssistInput, width: number, height: number) {
+function resolveUnoccupiedPlacement(input: EaselAssistInput, width: number, height: number) {
   const document = input.document;
   const padding = 28;
   const maxX = Math.max(padding, document.width - width - padding);
   const maxY = Math.max(padding, document.height - height - padding);
-  const requested = readRequestedLocation(input.prompt);
-  if (requested) {
-    return resolvePlanPlacement(document, input.prompt, width, height);
-  }
-
   const occupied = (input.layers || []).map((layer) => ({
     x: layer.x,
     y: layer.y,
     width: layer.width,
     height: layer.height,
   }));
-  const candidates = [
-    { x: padding, y: padding },
-    { x: maxX, y: padding },
-    { x: padding, y: maxY },
-    { x: maxX, y: maxY },
-    { x: Math.round((document.width - width) / 2), y: padding },
-    { x: Math.round((document.width - width) / 2), y: maxY },
-  ];
-  const candidate = candidates.find((position) => !occupied.some((bounds) => intersectsBounds({ ...position, width, height }, bounds)));
-  return candidate || resolvePlanPlacement(document, input.prompt, width, height);
+  const requested = readRequestedLocation(input.prompt);
+  const requestedPosition = requested
+    ? {
+        x: requested.horizontal === "left" ? padding : requested.horizontal === "right" ? maxX : (document.width - width) / 2,
+        y: requested.vertical === "top" ? padding : requested.vertical === "bottom" ? maxY : (document.height - height) / 2,
+      }
+    : null;
+  const positions = requestedPosition ? [requestedPosition] : [];
+  const steps = 4;
+  for (let row = 0; row <= steps; row += 1) {
+    for (let column = 0; column <= steps; column += 1) {
+      positions.push({
+        x: padding + (maxX - padding) * (column / steps),
+        y: padding + (maxY - padding) * (row / steps),
+      });
+    }
+  }
+
+  const candidates = positions.map((position) => ({
+    x: Math.round(clamp(position.x, padding, maxX)),
+    y: Math.round(clamp(position.y, padding, maxY)),
+  }));
+  const openCandidate = candidates.find((position) => !occupied.some((bounds) => intersectsBounds({ ...position, width, height }, bounds)));
+  if (openCandidate) return openCandidate;
+
+  return candidates.reduce((best, candidate) => (
+    overlapArea({ ...candidate, width, height }, occupied) < overlapArea({ ...best, width, height }, occupied)
+      ? candidate
+      : best
+  ));
+}
+
+function resolveTeachingPlacement(input: EaselAssistInput, width: number, height: number) {
+  return resolveUnoccupiedPlacement(input, width, height);
 }
 
 function intersectsBounds(
@@ -1244,6 +1239,17 @@ function intersectsBounds(
     && first.x + first.width > second.x
     && first.y < second.y + second.height
     && first.y + first.height > second.y;
+}
+
+function overlapArea(
+  candidate: { x: number; y: number; width: number; height: number },
+  occupied: Array<{ x: number; y: number; width: number; height: number }>
+) {
+  return occupied.reduce((area, bounds) => {
+    const width = Math.max(0, Math.min(candidate.x + candidate.width, bounds.x + bounds.width) - Math.max(candidate.x, bounds.x));
+    const height = Math.max(0, Math.min(candidate.y + candidate.height, bounds.y + bounds.height) - Math.max(candidate.y, bounds.y));
+    return area + width * height;
+  }, 0);
 }
 
 function readRequestedLocation(prompt: string) {

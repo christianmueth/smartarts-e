@@ -842,7 +842,12 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
       if (error instanceof Error && /General drawing is unavailable/i.test(error.message)) {
         throw error;
       }
-      return buildLocalCanvasFallbackPlan(prompt, buildSelectedLayerForAssist(), documentRef.current);
+      const document = documentRef.current;
+      return placeLocalFallbackPlan(
+        buildLocalCanvasFallbackPlan(prompt, buildSelectedLayerForAssist(), document),
+        prompt,
+        document
+      );
     }
   }
 
@@ -2535,8 +2540,8 @@ function buildMotorcycleAssistActions(document: EditorCanvasDocument): EditorAss
 function buildGenericDoodleAssistPlan(prompt: string, document: EditorCanvasDocument): EditorAssistPlan {
   const subject = extractFallbackText(prompt);
   const seed = hashFallbackText(prompt);
-  const centerX = document.width * (0.32 + (seed % 360) / 1000);
-  const centerY = document.height * (0.3 + (Math.floor(seed / 360) % 280) / 1000);
+  const centerX = document.width * 0.5;
+  const centerY = document.height * 0.5;
   const size = Math.min(document.width, document.height) * 0.2;
   const stroke = ["#ff5fb2", "#4d8cff", "#2ca24f", "#e84a5f"][seed % 4];
   const accent = ["#ffb200", "#ff8a5b", "#5abf9a", "#8e6cff"][Math.floor(seed / 7) % 4];
@@ -2606,9 +2611,89 @@ function resolveFallbackPlacement(document: EditorCanvasDocument, prompt: string
   const top = /\b(?:top|upper)\b/.test(lower);
   const bottom = /\b(?:bottom|lower)\b/.test(lower);
   const center = /\b(?:center|centre|middle)\b/.test(lower);
-  const x = left ? padding : right ? maxX : center ? (document.width - width) / 2 : padding + Math.random() * (maxX - padding);
-  const y = top ? padding : bottom ? maxY : center ? (document.height - height) / 2 : padding + Math.random() * (maxY - padding);
-  return { x: Math.round(Math.max(padding, Math.min(maxX, x))), y: Math.round(Math.max(padding, Math.min(maxY, y))) };
+  const requested = {
+    x: left ? padding : right ? maxX : center ? (document.width - width) / 2 : null,
+    y: top ? padding : bottom ? maxY : center ? (document.height - height) / 2 : null,
+  };
+  return resolveLocalUnoccupiedPlacement(document, width, height, requested.x, requested.y);
+}
+
+function placeLocalFallbackPlan(plan: EditorAssistPlan, prompt: string, document: EditorCanvasDocument): EditorAssistPlan {
+  const bounds = getAssistActionBounds(plan.actions);
+  if (!bounds) return plan;
+  const placement = resolveFallbackPlacement(document, prompt, bounds.width, bounds.height);
+  const dx = placement.x - bounds.x;
+  const dy = placement.y - bounds.y;
+  return {
+    ...plan,
+    actions: plan.actions.map((action) => ({
+      ...action,
+      x: typeof action.x === "number" ? action.x + dx : action.x,
+      y: typeof action.y === "number" ? action.y + dy : action.y,
+      points: Array.isArray(action.points)
+        ? action.points.map((point, index) => point + (index % 2 === 0 ? dx : dy))
+        : action.points,
+    })),
+  };
+}
+
+function resolveLocalUnoccupiedPlacement(document: EditorCanvasDocument, width: number, height: number, requestedX: number | null, requestedY: number | null) {
+  const padding = 28;
+  const maxX = Math.max(padding, document.width - width - padding);
+  const maxY = Math.max(padding, document.height - height - padding);
+  const positions: Array<{ x: number; y: number }> = requestedX !== null || requestedY !== null
+    ? [{ x: requestedX ?? (document.width - width) / 2, y: requestedY ?? (document.height - height) / 2 }]
+    : [];
+  const steps = 4;
+  for (let row = 0; row <= steps; row += 1) {
+    for (let column = 0; column <= steps; column += 1) {
+      positions.push({ x: padding + (maxX - padding) * column / steps, y: padding + (maxY - padding) * row / steps });
+    }
+  }
+  const candidates = positions.map((position) => ({
+    x: Math.round(Math.max(padding, Math.min(maxX, position.x))),
+    y: Math.round(Math.max(padding, Math.min(maxY, position.y))),
+  }));
+  const occupied = document.layers.map(({ x, y, width, height }) => ({ x, y, width, height }));
+  const openCandidate = candidates.find((candidate) => !occupied.some((bounds) => assistBoundsIntersect({ ...candidate, width, height }, bounds)));
+  if (openCandidate) return openCandidate;
+  return candidates.reduce((best, candidate) => (
+    localOverlapArea({ ...candidate, width, height }, occupied) < localOverlapArea({ ...best, width, height }, occupied)
+      ? candidate
+      : best
+  ));
+}
+
+function getAssistActionBounds(actions: EditorAssistAction[]) {
+  const points: Array<{ x: number; y: number }> = [];
+  for (const action of actions) {
+    if (typeof action.x === "number" && typeof action.y === "number") {
+      points.push({ x: action.x, y: action.y }, { x: action.x + (action.width || 0), y: action.y + (action.height || 0) });
+    }
+    if (Array.isArray(action.points)) {
+      for (let index = 0; index < action.points.length - 1; index += 2) {
+        points.push({ x: action.points[index], y: action.points[index + 1] });
+      }
+    }
+  }
+  if (!points.length) return null;
+  const xValues = points.map((point) => point.x);
+  const yValues = points.map((point) => point.y);
+  const x = Math.min(...xValues);
+  const y = Math.min(...yValues);
+  return { x, y, width: Math.max(1, Math.max(...xValues) - x), height: Math.max(1, Math.max(...yValues) - y) };
+}
+
+function assistBoundsIntersect(first: { x: number; y: number; width: number; height: number }, second: { x: number; y: number; width: number; height: number }) {
+  return first.x < second.x + second.width && first.x + first.width > second.x && first.y < second.y + second.height && first.y + first.height > second.y;
+}
+
+function localOverlapArea(candidate: { x: number; y: number; width: number; height: number }, occupied: Array<{ x: number; y: number; width: number; height: number }>) {
+  return occupied.reduce((area, bounds) => {
+    const width = Math.max(0, Math.min(candidate.x + candidate.width, bounds.x + bounds.width) - Math.max(candidate.x, bounds.x));
+    const height = Math.max(0, Math.min(candidate.y + candidate.height, bounds.y + bounds.height) - Math.max(candidate.y, bounds.y));
+    return area + width * height;
+  }, 0);
 }
 
 function buildDeterministicExplanationSections(topic: string) {
