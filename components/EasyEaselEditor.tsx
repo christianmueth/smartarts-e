@@ -1552,8 +1552,11 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
           <aside className="rounded-[1.8rem] border border-pink-200/80 bg-white/82 p-4 shadow-[0_18px_60px_rgba(255,129,181,0.16)] backdrop-blur">
             <div className="space-y-4">
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">Layers</summary>
-                <div className="mt-3 space-y-2">
+                <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-semibold text-[#7a1f4f]">
+                  <span>Layers</span>
+                  <span className="rounded-full border border-pink-200 bg-white px-2 py-0.5 text-xs font-medium text-pink-600">{document.layers.length}</span>
+                </summary>
+                <div className="mt-3 max-h-[min(44vh,30rem)] space-y-2 overflow-y-auto overscroll-contain pr-1">
                   {[...document.layers].reverse().map((layer) => (
                     <div key={layer.id} className={selectedLayerIds.includes(layer.id) ? "rounded-[1rem] border border-pink-300 bg-white p-3" : "rounded-[1rem] border border-pink-100 bg-white/80 p-3"}>
                       <button type="button" onClick={() => setSelection([layer.id], layer.id)} className="w-full text-left text-sm font-medium text-[#6d2141]">
