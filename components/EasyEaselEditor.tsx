@@ -1606,9 +1606,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   </label>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void startReferencePainting()} disabled={busyAction !== null} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">Paint reference</button>
-                    <button type="button" onClick={pausePainting} disabled={busyAction !== "paint" || activePaintSession?.status !== "painting"} className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm font-medium text-yellow-900 disabled:opacity-50">Pause</button>
-                    <button type="button" onClick={resumePainting} disabled={!activePaintSession || !["paused", "stopped"].includes(activePaintSession.status)} className="rounded-full border border-pink-200 bg-white px-3 py-2 text-sm font-medium text-pink-700 disabled:opacity-50">Resume</button>
                     <button type="button" onClick={stopPainting} disabled={busyAction !== "paint"} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 disabled:opacity-50">Stop</button>
+                    <button type="button" onClick={resumePainting} disabled={!activePaintSession || !["paused", "stopped"].includes(activePaintSession.status)} className="rounded-full border border-pink-200 bg-white px-3 py-2 text-sm font-medium text-pink-700 disabled:opacity-50">Resume</button>
                   </div>
                   {activePaintSession ? <p className="text-xs text-pink-500">{activePaintSession.status} · {activePaintSession.completedActionCount} of {activePaintSession.actions.length} strokes</p> : null}
                 </div>
