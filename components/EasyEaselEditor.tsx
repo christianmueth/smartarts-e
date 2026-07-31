@@ -1538,15 +1538,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     placeholder="Write on the board, explain a topic, highlight something, circle a layer, point at an object, brush a mark, or erase a region."
                     className="min-h-[150px] w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
                     <button type="button" onClick={() => void runAi("generate")} disabled={busyAction !== null} className="rounded-full bg-[linear-gradient(135deg,#ff5fb2,#ff8a5b)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
                       {busyAction === "generate" ? "Running..." : "Run on easel"}
-                    </button>
-                    <button type="button" onClick={() => void runAi("edit")} disabled={busyAction !== null} className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-medium text-pink-700 disabled:opacity-60">
-                      {busyAction === "edit" ? "Editing..." : "Apply to selected"}
-                    </button>
-                    <button type="button" onClick={() => void runAi("variation")} disabled={busyAction !== null} className="rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-900 disabled:opacity-60 sm:col-span-2">
-                      {busyAction === "variation" ? "Varying..." : "Create variations"}
                     </button>
                   </div>
                   <p className="text-xs leading-6 text-pink-500">
