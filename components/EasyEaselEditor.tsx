@@ -41,7 +41,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [strokeColor, setStrokeColor] = useState("#ff5fb2");
   const [fillColor, setFillColor] = useState("#ffe09c");
   const [brushSize, setBrushSize] = useState(8);
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(1);
+  const [canvasViewport, setCanvasViewport] = useState({ width: 0, height: 0 });
   const [aiPrompt, setAiPrompt] = useState("");
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
@@ -55,6 +56,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
   const documentRef = useRef(document);
   const stageRef = useRef<Konva.Stage | null>(null);
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const nodeRefs = useRef<Record<string, Konva.Group | null>>({});
   const isDrawingRef = useRef(false);
@@ -90,6 +92,31 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
     setProjects((current) => mergeProjectSummaries(current, localProjects.map(summarizeProject)));
   }, []);
+
+  useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+
+    const updateViewport = () => {
+      setCanvasViewport({ width: viewport.clientWidth, height: viewport.clientHeight });
+    };
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!canvasViewport.width || !canvasViewport.height) return;
+    const horizontalPadding = 32;
+    const verticalPadding = 32;
+    const fitZoom = Math.min(
+      (canvasViewport.width - horizontalPadding) / document.width,
+      (canvasViewport.height - verticalPadding) / document.height,
+      1
+    );
+    setZoom(Number(Math.max(0.18, fitZoom).toFixed(3)));
+  }, [canvasViewport, document.width, document.height]);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -1217,8 +1244,9 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               </div>
             </div>
 
-            <div className="max-h-[74vh] overflow-auto rounded-[1.5rem] border border-pink-100 bg-[linear-gradient(135deg,_rgba(255,250,214,0.5),_rgba(255,241,247,0.8))] p-4">
-              <div style={{ width: canvasWidth, height: canvasHeight }}>
+            <div ref={canvasViewportRef} className="h-[min(74vh,780px)] min-h-[360px] overflow-auto rounded-[1.5rem] border border-pink-100 bg-[linear-gradient(135deg,_rgba(255,250,214,0.5),_rgba(255,241,247,0.8))] p-4">
+              <div className="flex min-h-full min-w-full items-center justify-center">
+                <div style={{ width: canvasWidth, height: canvasHeight }}>
                 <Stage
                   ref={stageRef}
                   width={document.width}
@@ -1315,6 +1343,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     <Transformer ref={transformerRef} rotateEnabled anchorCornerRadius={12} borderStroke="#ff5fb2" anchorFill="#fff7fb" anchorStroke="#ff5fb2" />
                   </Layer>
                 </Stage>
+                  </div>
               </div>
             </div>
           </section>
