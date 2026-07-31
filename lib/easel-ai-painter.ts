@@ -27,11 +27,11 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const actions: EditorAssistAction[] = [];
 
   appendUnderpainting(actions, pixels, sampling, bounds);
-  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "background", pixels, sampling, bounds, 5, 0.24, 1.15, (_pixel, x, y) => isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.4, 0.92, (_pixel, x, y) => !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && (isEdge(pixels, sampling.columns, sampling.rows, x, y) || localContrast(pixels, sampling.columns, sampling.rows, x, y) > 58));
   appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
 }
@@ -42,19 +42,27 @@ function appendUnderpainting(
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
   bounds: { x: number; y: number; width: number; height: number }
 ) {
-  const stride = 1;
-  for (let y = 0; y < sampling.rows; y += stride) {
-    for (let x = 0; x < sampling.columns; x += stride) {
-      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+  const targetBlocks = sampling.cellWidth >= 28 ? 24 : sampling.cellWidth >= 9 ? 44 : 64;
+  const columns = Math.max(1, Math.round(Math.sqrt(targetBlocks * (bounds.width / bounds.height))));
+  const rows = Math.max(1, Math.ceil(targetBlocks / columns));
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
+      const sourceLeft = Math.floor((x / columns) * sampling.columns);
+      const sourceTop = Math.floor((y / rows) * sampling.rows);
+      const sourceRight = Math.ceil(((x + 1) / columns) * sampling.columns);
+      const sourceBottom = Math.ceil(((y + 1) / rows) * sampling.rows);
+      const pixel = averageRegion(pixels, sampling.columns, sampling.rows, sourceLeft, sourceTop, sourceRight, sourceBottom);
+      const left = (x / columns) * bounds.width;
+      const top = (y / rows) * bounds.height;
       actions.push({
         tool: "rect",
         pass: "background",
         label: `Underpainting region ${actions.length + 1}`,
-        x: bounds.x + x * sampling.cellWidth,
-        y: bounds.y + y * sampling.cellHeight,
-        width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth * stride + 1),
-        height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight * stride + 1),
-        fill: toColor(quantizePixel(pixel, 16)),
+        x: bounds.x + left,
+        y: bounds.y + top,
+        width: ((x + 1) / columns) * bounds.width - left,
+        height: ((y + 1) / rows) * bounds.height - top,
+        fill: toColor(quantizePixel(pixel, 24)),
         stroke: "rgba(0,0,0,0)",
         strokeWidth: 1,
         opacity: 1,
@@ -85,7 +93,9 @@ function appendPass(
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
       const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
-      const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
+          const contrast = localContrast(pixels, sampling.columns, sampling.rows, x, y);
+          const brushScale = adaptiveBrushScale(pass, contrast);
+          const length = unit * brushScale * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
           const jitter = strokeJitter(x, y, pass, unit * 1.25);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
           const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
@@ -99,7 +109,7 @@ function appendPass(
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier),
+        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale),
         opacity,
       });
     }
@@ -203,6 +213,30 @@ function averagePixel(data: Uint8ClampedArray, columns: number, rows: number, x:
     }
   }
   return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
+}
+
+function averageRegion(data: Uint8ClampedArray, columns: number, rows: number, left: number, top: number, right: number, bottom: number): Pixel {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let alpha = 0;
+  let count = 0;
+  for (let y = Math.max(0, top); y < Math.min(rows, bottom); y += 1) {
+    for (let x = Math.max(0, left); x < Math.min(columns, right); x += 1) {
+      const pixel = sample(data, columns, rows, x, y);
+      red += pixel.red;
+      green += pixel.green;
+      blue += pixel.blue;
+      alpha += pixel.alpha;
+      count += 1;
+    }
+  }
+  return {
+    red: Math.round(red / Math.max(1, count)),
+    green: Math.round(green / Math.max(1, count)),
+    blue: Math.round(blue / Math.max(1, count)),
+    alpha: Math.round(alpha / Math.max(1, count)),
+  };
 }
 
 function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number) {
@@ -334,4 +368,16 @@ function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x
 
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
   return { red: Math.round(pixel.red * factor), green: Math.round(pixel.green * factor), blue: Math.round(pixel.blue * factor), alpha: pixel.alpha };
+}
+
+function isRefinementCandidate(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const contrast = localContrast(data, columns, rows, x, y);
+  return contrast > 76 || (contrast > 54 && isEdge(data, columns, rows, x, y));
+}
+
+function adaptiveBrushScale(pass: EditorPaintPass, contrast: number) {
+  if (pass === "background") return contrast < 28 ? 1.45 : 1.15;
+  if (pass === "major-forms") return contrast > 100 ? 0.72 : contrast > 64 ? 0.9 : 1.2;
+  if (pass === "shading") return contrast > 76 ? 0.82 : 1.08;
+  return contrast > 100 ? 0.72 : 0.9;
 }
