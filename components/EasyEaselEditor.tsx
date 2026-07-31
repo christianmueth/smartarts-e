@@ -43,6 +43,8 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [brushSize, setBrushSize] = useState(8);
   const [zoom, setZoom] = useState(1);
   const [canvasViewport, setCanvasViewport] = useState({ width: 0, height: 0 });
+  const [canvasWidthInput, setCanvasWidthInput] = useState(String(initialDocument.width));
+  const [canvasHeightInput, setCanvasHeightInput] = useState(String(initialDocument.height));
   const [aiPrompt, setAiPrompt] = useState("");
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
@@ -84,6 +86,11 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   useEffect(() => {
     documentRef.current = document;
   }, [document]);
+
+  useEffect(() => {
+    setCanvasWidthInput(String(document.width));
+    setCanvasHeightInput(String(document.height));
+  }, [document.width, document.height]);
 
   useEffect(() => {
     const localProjects = readLocalEditorProjects();
@@ -1172,6 +1179,24 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
     setZoom(Number(Math.max(0.18, fitZoom).toFixed(3)));
   }
 
+  function commitCanvasDimension(axis: "width" | "height") {
+    const input = axis === "width" ? canvasWidthInput : canvasHeightInput;
+    const currentValue = axis === "width" ? document.width : document.height;
+    const parsedValue = Number(input);
+    if (!input.trim() || !Number.isFinite(parsedValue)) {
+      if (axis === "width") setCanvasWidthInput(String(currentValue));
+      else setCanvasHeightInput(String(currentValue));
+      return;
+    }
+    const nextValue = Math.max(24, Math.min(6000, Math.round(parsedValue)));
+    if (nextValue !== currentValue) {
+      mutateDocument((current) => ({ ...current, [axis]: nextValue }));
+      isManualZoomRef.current = false;
+    }
+    if (axis === "width") setCanvasWidthInput(String(nextValue));
+    else setCanvasHeightInput(String(nextValue));
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,183,212,0.42),_transparent_28%),linear-gradient(180deg,_#fff6d6_0%,_#fff7fb_48%,_#fff0b8_100%)] text-[#5f2141]">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-5 md:px-6 md:py-6">
@@ -1253,7 +1278,35 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-pink-200 bg-pink-50 px-3 py-1 text-sm font-medium text-pink-700">{tool}</span>
-                <span className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-sm font-medium text-yellow-900">{document.width} x {document.height}</span>
+                <div className="inline-flex items-center rounded-full border border-yellow-300 bg-yellow-50 px-2 py-1 text-sm font-medium text-yellow-900">
+                  <input
+                    aria-label="Canvas width"
+                    type="number"
+                    min={24}
+                    max={6000}
+                    value={canvasWidthInput}
+                    onChange={(event) => setCanvasWidthInput(event.target.value)}
+                    onBlur={() => commitCanvasDimension("width")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="w-14 bg-transparent text-center outline-none"
+                  />
+                  <span aria-hidden="true">x</span>
+                  <input
+                    aria-label="Canvas height"
+                    type="number"
+                    min={24}
+                    max={6000}
+                    value={canvasHeightInput}
+                    onChange={(event) => setCanvasHeightInput(event.target.value)}
+                    onBlur={() => commitCanvasDimension("height")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="w-14 bg-transparent text-center outline-none"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setManualZoom(zoom - 0.1)} className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-sm text-pink-700">-</button>
