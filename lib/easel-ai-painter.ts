@@ -29,7 +29,7 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendPass(actions, "background", pixels, sampling, bounds, 3, 0.95, 1, (pixel) => isBackgroundPixel(pixel, backgroundColors));
   appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.9, 1, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors));
   appendPass(actions, "shading", pixels, sampling, bounds, 2, 0.34, 0.62, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
-  appendPass(actions, "facial-features", pixels, sampling, bounds, 1, 0.88, 0.46, (_pixel, x, y) => isFocalDetail(pixels, sampling.columns, sampling.rows, x, y));
+  appendFaceFeaturePass(actions, pixels, sampling, bounds);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 2, 0.76, 0.34, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
@@ -95,7 +95,7 @@ function appendPass(
 }
 
 function getSampling(detailLevel: EditorPaintDetailLevel, width: number, height: number) {
-  const cellSize = detailLevel === "study" ? 28 : detailLevel === "refined" ? 18 : 11;
+  const cellSize = detailLevel === "study" ? 28 : detailLevel === "refined" ? 18 : 8;
   return {
     columns: Math.max(1, Math.ceil(width / cellSize)),
     rows: Math.max(1, Math.ceil(height / cellSize)),
@@ -219,4 +219,62 @@ function strokeDirection(data: Uint8ClampedArray, columns: number, rows: number,
 function quantizePixel(pixel: Pixel, step: number): Pixel {
   const quantize = (value: number) => Math.min(255, Math.round(value / step) * step);
   return { red: quantize(pixel.red), green: quantize(pixel.green), blue: quantize(pixel.blue), alpha: pixel.alpha };
+}
+
+function appendFaceFeaturePass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number }
+) {
+  const face = {
+    left: Math.floor(sampling.columns * 0.25),
+    right: Math.ceil(sampling.columns * 0.62),
+    top: Math.floor(sampling.rows * 0.16),
+    bottom: Math.ceil(sampling.rows * 0.63),
+  };
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (let y = face.top; y < face.bottom; y += 1) {
+    for (let x = face.left; x < face.right; x += 1) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      const score = localContrast(pixels, sampling.columns, sampling.rows, x, y);
+      if (brightness(pixel) < 150 && score > 80) candidates.push({ x, y, score, pixel });
+    }
+  }
+
+  candidates.sort((first, second) => second.score - first.score);
+  const selected: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (const candidate of candidates) {
+    if (selected.some((feature) => Math.abs(feature.x - candidate.x) < 2 && Math.abs(feature.y - candidate.y) < 2)) continue;
+    selected.push(candidate);
+  }
+
+  for (const feature of selected) {
+    const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, feature.x, feature.y, "facial-features");
+    const centerX = bounds.x + (feature.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (feature.y + 0.5) * sampling.cellHeight;
+    const length = unit * 1.2;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "facial-features",
+      label: `Facial feature ${actions.length + 1}`,
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(quantizePixel(feature.pixel, 16)),
+      strokeWidth: Math.max(1.5, unit * 0.42),
+      opacity: 0.94,
+    });
+  }
+}
+
+function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const pixel = sample(data, columns, rows, x, y);
+  return Math.max(
+    colorDistance(pixel, sample(data, columns, rows, x - 1, y)),
+    colorDistance(pixel, sample(data, columns, rows, x + 1, y)),
+    colorDistance(pixel, sample(data, columns, rows, x, y - 1)),
+    colorDistance(pixel, sample(data, columns, rows, x, y + 1))
+  );
 }
