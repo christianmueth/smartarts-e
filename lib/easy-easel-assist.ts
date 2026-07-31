@@ -377,7 +377,9 @@ async function generateExplanationSections(topic: string): Promise<ExplanationSe
           "You write short, clear teaching explanations for an Easy Easel canvas.",
           "Return JSON only.",
           "Write one concise summary sentence and 3 brief sub-points.",
-          "Use simple language, but keep the explanation correct.",
+          "Every sentence must teach a concrete fact about the requested topic; never give generic advice about how to explain a topic.",
+          "Use simple language, but keep the explanation correct and include important vocabulary when it helps.",
+          "Make the sub-points cover mechanism, a key principle or example, and why the topic matters.",
           "Do not use markdown or numbering.",
           "Keep the total combined text under 520 characters.",
         ].join(" "),
@@ -1399,6 +1401,72 @@ function buildDeterministicExplanationSections(topic: string): ExplanationSectio
         "Plants absorb water through their roots and carbon dioxide from the air.",
         "Light energy powers a reaction in the leaves that turns those inputs into sugar.",
         "Oxygen is released as a byproduct, which helps support life on Earth.",
+      ],
+    };
+  }
+
+  if (/thermodynamics|laws? of thermodynamics|heat and energy/i.test(topic)) {
+    return {
+      summary: "Thermodynamics explains how energy moves and changes form, especially through heat and work.",
+      keyPoints: [
+        "The first law says energy is conserved: it can transfer or transform, but it is not created or destroyed.",
+        "Heat naturally flows from warmer objects to cooler ones until their temperatures become more even.",
+        "The second law introduces entropy: energy spreads out, so no engine can turn all heat into useful work.",
+      ],
+    };
+  }
+
+  if (/newton.?s laws?|motion|force/i.test(topic)) {
+    return {
+      summary: "Newton's laws describe how forces change an object's motion.",
+      keyPoints: [
+        "Without a net force, an object stays at rest or continues moving at constant speed in a straight line.",
+        "A larger net force causes more acceleration, while a larger mass is harder to accelerate.",
+        "For every action force there is an equal and opposite reaction force on another object.",
+      ],
+    };
+  }
+
+  if (/cellular respiration|respiration/i.test(topic)) {
+    return {
+      summary: "Cellular respiration releases usable energy from food so cells can do work.",
+      keyPoints: [
+        "Cells break down glucose in a series of reactions, usually using oxygen in the mitochondria.",
+        "The released energy is captured in ATP, a molecule cells use to power many processes.",
+        "Carbon dioxide and water are produced as waste products during aerobic respiration.",
+      ],
+    };
+  }
+
+  if (/evolution|natural selection/i.test(topic)) {
+    return {
+      summary: "Evolution is the change in inherited traits of populations over many generations.",
+      keyPoints: [
+        "Individuals vary, and some of that variation is inherited by their offspring.",
+        "Natural selection favors traits that help organisms survive or reproduce in a particular environment.",
+        "Over time, helpful inherited traits can become more common in the population.",
+      ],
+    };
+  }
+
+  if (/atom|atomic structure/i.test(topic)) {
+    return {
+      summary: "An atom is the smallest unit of an element that still has that element's chemical identity.",
+      keyPoints: [
+        "A dense nucleus contains positively charged protons and neutral neutrons.",
+        "Negatively charged electrons occupy regions around the nucleus and influence chemical bonding.",
+        "The number of protons determines the element, while electrons can change how it reacts.",
+      ],
+    };
+  }
+
+  if (/mitosis|cell division/i.test(topic)) {
+    return {
+      summary: "Mitosis is the process that produces two genetically matching body cells from one original cell.",
+      keyPoints: [
+        "Before division, the cell copies its DNA so each new cell can receive a full set of chromosomes.",
+        "The chromosomes separate into two groups as the cell organizes the copied genetic material.",
+        "Mitosis supports growth, tissue repair, and replacement of worn-out cells.",
       ],
     };
   }

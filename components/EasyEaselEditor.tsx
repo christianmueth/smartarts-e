@@ -2386,6 +2386,17 @@ function buildDeterministicExplanationSections(topic: string) {
     };
   }
 
+  if (/thermodynamics|laws? of thermodynamics|heat and energy/i.test(topic)) {
+    return {
+      summary: "Thermodynamics explains how energy moves and changes form, especially through heat and work.",
+      keyPoints: [
+        "The first law says energy is conserved: it can transfer or transform, but it is not created or destroyed.",
+        "Heat naturally flows from warmer objects to cooler ones until their temperatures become more even.",
+        "The second law introduces entropy: energy spreads out, so no engine can turn all heat into useful work.",
+      ],
+    };
+  }
+
   const subject = toDisplayFallbackTopic(topic);
   return {
     summary: `${subject} is easiest to understand by focusing on what it is, how it works, and why it matters.`,
