@@ -26,11 +26,11 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-    appendPass(actions, "background", pixels, sampling, bounds, 3, 0.38, 2.5, (pixel) => isBackgroundPixel(pixel, backgroundColors));
-    appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.52, 1.75, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
-    appendPass(actions, "shading", pixels, sampling, bounds, 1, 0.32, 1.05, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
-    appendPass(actions, "facial-features", pixels, sampling, bounds, 1, 0.78, 0.68, (_pixel, x, y) => isFocalDetail(pixels, sampling.columns, sampling.rows, x, y));
-    appendPass(actions, "final-detail", pixels, sampling, bounds, 1, 0.62, 0.48, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.95, 1, (pixel) => isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.9, 1, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "shading", pixels, sampling, bounds, 2, 0.34, 0.62, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "facial-features", pixels, sampling, bounds, 1, 0.88, 0.46, (_pixel, x, y) => isFocalDetail(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 2, 0.76, 0.34, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
 }
@@ -53,8 +53,26 @@ function appendPass(
         continue;
       }
 
-      const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+      const color = toColor(quantizePixel(pixel, unit <= 12 ? 20 : 32));
+      if (pass === "background" || pass === "major-forms") {
+        actions.push({
+          tool: "rect",
+          pass,
+          label: `${passLabel(pass)} color region ${actions.length + 1}`,
+          x: bounds.x + x * sampling.cellWidth,
+          y: bounds.y + y * sampling.cellHeight,
+          width: sampling.cellWidth * stride + 1,
+          height: sampling.cellHeight * stride + 1,
+          fill: color,
+          stroke: "rgba(0,0,0,0)",
+          strokeWidth: 1,
+          opacity,
+        });
+        continue;
+      }
+
+      const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
           const length = unit * (pass === "final-detail" || pass === "facial-features" ? 1.1 : 1.85);
           const jitter = strokeJitter(x, y, pass, unit);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
@@ -68,8 +86,8 @@ function appendPass(
         pass,
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
-        stroke: toColor(pixel),
-        strokeWidth: Math.max(1, Math.min(sampling.cellHeight, sampling.cellWidth) * widthMultiplier),
+        stroke: color,
+        strokeWidth: Math.max(1, unit * widthMultiplier),
         opacity,
       });
     }
@@ -196,4 +214,9 @@ function strokeDirection(data: Uint8ClampedArray, columns: number, rows: number,
   const top = brightness(sample(data, columns, rows, x, y - 1));
   const bottom = brightness(sample(data, columns, rows, x, y + 1));
   return Math.atan2(bottom - top, right - left) + Math.PI / 2;
+}
+
+function quantizePixel(pixel: Pixel, step: number): Pixel {
+  const quantize = (value: number) => Math.min(255, Math.round(value / step) * step);
+  return { red: quantize(pixel.red), green: quantize(pixel.green), blue: quantize(pixel.blue), alpha: pixel.alpha };
 }
