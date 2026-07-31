@@ -26,11 +26,11 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.95, 1, (pixel) => isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.9, 1, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "shading", pixels, sampling, bounds, 2, 0.34, 0.62, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.58, 2.15, (pixel) => isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.62, 1.6, (pixel, x, y) => !isBackgroundPixel(pixel, backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 2, 0.76, 0.34, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
 }
@@ -54,33 +54,16 @@ function appendPass(
       }
 
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
-      const color = toColor(quantizePixel(pixel, unit <= 12 ? 20 : 32));
-      if (pass === "background" || pass === "major-forms") {
-        actions.push({
-          tool: "rect",
-          pass,
-          label: `${passLabel(pass)} color region ${actions.length + 1}`,
-          x: bounds.x + x * sampling.cellWidth,
-          y: bounds.y + y * sampling.cellHeight,
-          width: sampling.cellWidth * stride + 1,
-          height: sampling.cellHeight * stride + 1,
-          fill: color,
-          stroke: "rgba(0,0,0,0)",
-          strokeWidth: 1,
-          opacity,
-        });
-        continue;
-      }
-
+      const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
-          const length = unit * (pass === "final-detail" || pass === "facial-features" ? 1.1 : 1.85);
+      const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
           const jitter = strokeJitter(x, y, pass, unit);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
           const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
       const offsetX = Math.cos(direction) * length * 0.5;
       const offsetY = Math.sin(direction) * length * 0.5;
-      const curveX = Math.cos(direction + Math.PI / 2) * length * 0.12;
-      const curveY = Math.sin(direction + Math.PI / 2) * length * 0.12;
+      const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
+      const curveY = Math.sin(direction + Math.PI / 2) * length * 0.08;
       actions.push({
         tool: "brush",
         pass,
@@ -207,7 +190,7 @@ function passLabel(pass: EditorPaintPass) {
 function strokeDirection(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number, pass: EditorPaintPass) {
   if (pass === "background" || pass === "major-forms") {
     const variation = ((x * 17 + y * 31) % 9) - 4;
-    return variation * 0.16 + (x % 3 === 0 ? 0.55 : -0.32);
+    return variation * 0.09 + (x % 3 === 0 ? 0.3 : -0.16);
   }
   const left = brightness(sample(data, columns, rows, x - 1, y));
   const right = brightness(sample(data, columns, rows, x + 1, y));
