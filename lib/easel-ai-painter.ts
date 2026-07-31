@@ -26,52 +26,13 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendSmoothBase(actions, pixels, sampling, bounds);
-  appendPass(actions, "background", pixels, sampling, bounds, 5, 0.24, 1.15, 80, (_pixel, x, y) => isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && !isEdge(pixels, sampling.columns, sampling.rows, x, y));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.4, 0.92, 160, (_pixel, x, y) => !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors) && (isEdge(pixels, sampling.columns, sampling.rows, x, y) || localContrast(pixels, sampling.columns, sampling.rows, x, y) > 58));
-  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, 150, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.58, 1.85, 130, (pixel) => isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.66, 1.4, 220, (pixel) => !isBackgroundPixel(pixel, backgroundColors));
+  appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, 100, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, 240, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, 180, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
-}
-
-function appendSmoothBase(
-  actions: EditorAssistAction[],
-  pixels: Uint8ClampedArray,
-  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
-  bounds: { x: number; y: number; width: number; height: number }
-) {
-  const targetStrokes = sampling.cellWidth >= 28 ? 80 : sampling.cellWidth >= 9 ? 130 : 180;
-  const columns = Math.max(1, Math.round(Math.sqrt(targetStrokes * (bounds.width / bounds.height))));
-  const rows = Math.max(1, Math.ceil(targetStrokes / columns));
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < columns; x += 1) {
-      const sourceLeft = Math.floor((x / columns) * sampling.columns);
-      const sourceTop = Math.floor((y / rows) * sampling.rows);
-      const sourceRight = Math.ceil(((x + 1) / columns) * sampling.columns);
-      const sourceBottom = Math.ceil(((y + 1) / rows) * sampling.rows);
-      const pixel = averageRegion(pixels, sampling.columns, sampling.rows, sourceLeft, sourceTop, sourceRight, sourceBottom);
-      const cellWidth = bounds.width / columns;
-      const cellHeight = bounds.height / rows;
-      const unit = Math.max(cellWidth, cellHeight);
-      const centerX = bounds.x + (x + 0.5 + (y % 2 ? 0.18 : -0.18)) * cellWidth;
-      const centerY = bounds.y + (y + 0.5) * cellHeight;
-      const direction = ((x * 13 + y * 7) % 9 - 4) * 0.12;
-      const length = unit * 1.6;
-      const offsetX = Math.cos(direction) * length * 0.5;
-      const offsetY = Math.sin(direction) * length * 0.5;
-      actions.push({
-        tool: "brush",
-        pass: "background",
-        label: "Broad tone",
-        points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
-        stroke: toColor(quantizePixel(pixel, 20)),
-        strokeWidth: unit * 1.28,
-        opacity: 0.62,
-      });
-    }
-  }
 }
 
 function appendPass(
@@ -225,30 +186,6 @@ function averagePixel(data: Uint8ClampedArray, columns: number, rows: number, x:
   return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
 }
 
-function averageRegion(data: Uint8ClampedArray, columns: number, rows: number, left: number, top: number, right: number, bottom: number): Pixel {
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  let alpha = 0;
-  let count = 0;
-  for (let y = Math.max(0, top); y < Math.min(rows, bottom); y += 1) {
-    for (let x = Math.max(0, left); x < Math.min(columns, right); x += 1) {
-      const pixel = sample(data, columns, rows, x, y);
-      red += pixel.red;
-      green += pixel.green;
-      blue += pixel.blue;
-      alpha += pixel.alpha;
-      count += 1;
-    }
-  }
-  return {
-    red: Math.round(red / Math.max(1, count)),
-    green: Math.round(green / Math.max(1, count)),
-    blue: Math.round(blue / Math.max(1, count)),
-    alpha: Math.round(alpha / Math.max(1, count)),
-  };
-}
-
 function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number) {
   const seed = x * 73856093 ^ y * 19349663 ^ pass.length * 83492791;
   const horizontal = ((seed >>> 5) % 1000) / 1000 - 0.5;
@@ -303,6 +240,7 @@ function appendFaceFeaturePass(
   for (const candidate of candidates) {
     if (selected.some((feature) => Math.abs(feature.x - candidate.x) < 2 && Math.abs(feature.y - candidate.y) < 2)) continue;
     selected.push(candidate);
+    if (selected.length === 70) break;
   }
 
   for (const feature of selected) {
