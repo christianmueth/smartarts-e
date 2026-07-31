@@ -46,7 +46,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
   const [busyAction, setBusyAction] = useState<null | "create" | `share:${string}` | `unshare:${string}`>(null);
 
   const sharedAssetMap = useMemo(() => new Map(sharedAssets.map((asset) => [asset.id, asset])), [sharedAssets]);
-  const organizationStats = useMemo(() => ({
+  const suiteStats = useMemo(() => ({
     workspaceCount: workspaces.length,
     sharedAssetCount: sharedAssets.length,
     pendingApprovals: sharedAssets.filter((asset) => asset.approvalStatus === "pending").length,
@@ -107,7 +107,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
       });
       const data = await safeJson(response);
       if (!response.ok || !data?.ok || !data?.result) {
-        throw new Error(data?.error || "Unable to update organization sharing.");
+        throw new Error(data?.error || "Unable to update Premium Suite sharing.");
       }
 
       const workspaceName = workspaceId ? (workspaces.find((workspace) => workspace.id === workspaceId)?.name || null) : null;
@@ -133,7 +133,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
 
       toast.success(shared ? "Published to shared library." : "Removed from shared library.", { id: toastId });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update organization sharing.", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Unable to update Premium Suite sharing.", { id: toastId });
     } finally {
       setBusyAction(null);
     }
@@ -143,18 +143,18 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
     <div className="space-y-8">
       <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-3xl border border-pink-100 bg-white/88 p-5 shadow-[0_12px_30px_rgba(255,213,115,0.14)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Organization</p>
-          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{organizationStats.workspaceCount}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Premium Suite</p>
+          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{suiteStats.workspaceCount}</p>
           <p className="mt-2 text-sm text-pink-900/80">Team workspaces</p>
         </div>
         <div className="rounded-3xl border border-pink-100 bg-white/88 p-5 shadow-[0_12px_30px_rgba(255,213,115,0.14)]">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Shared Library</p>
-          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{organizationStats.sharedAssetCount}</p>
+          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{suiteStats.sharedAssetCount}</p>
           <p className="mt-2 text-sm text-pink-900/80">Published assets</p>
         </div>
         <div className="rounded-3xl border border-pink-100 bg-white/88 p-5 shadow-[0_12px_30px_rgba(255,213,115,0.14)]">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Approval Workflows</p>
-          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{organizationStats.pendingApprovals}</p>
+          <p className="mt-3 text-3xl font-semibold text-[#7a1f4f]">{suiteStats.pendingApprovals}</p>
           <p className="mt-2 text-sm text-pink-900/80">Items waiting for approval</p>
         </div>
       </section>
@@ -238,7 +238,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
 
         <div className="rounded-[2rem] border border-pink-200/80 bg-white/84 p-6 shadow-[0_18px_60px_rgba(255,129,181,0.16)] backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Shared Asset Libraries</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#7a1f4f]">Publish saved assets into organization workspaces.</h2>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#7a1f4f]">Publish saved assets into Premium Suite workspaces.</h2>
           <div className="mt-5 space-y-4">
             {initialPersonalAssets.length ? initialPersonalAssets.map((asset) => {
               const sharedAsset = sharedAssetMap.get(asset.id) || null;
@@ -293,7 +293,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
               );
             }) : (
               <div className="rounded-[1.5rem] border border-dashed border-pink-200 bg-pink-50/60 px-5 py-10 text-sm text-pink-500">
-                Save images into your library first, then publish them to an organization workspace here.
+                Save images into your library first, then publish them to a Premium Suite workspace here.
               </div>
             )}
           </div>
@@ -304,7 +304,7 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Approval Queue</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#7a1f4f]">Shared assets under organization rules.</h2>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#7a1f4f]">Shared assets under Premium Suite rules.</h2>
           </div>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -321,13 +321,13 @@ export default function OrganizationWorkspace({ initialWorkspaces, initialShared
                     {asset.approvalStatus === "pending" ? "Pending" : "Approved"}
                   </span>
                 </div>
-                <p className="text-xs text-pink-500">{asset.workspaceName || "Shared organization library"}</p>
+                <p className="text-xs text-pink-500">{asset.workspaceName || "Shared Premium Suite library"}</p>
                 <p className="text-xs text-pink-400">Source: {asset.projectName}</p>
               </div>
             </article>
           )) : (
             <div className="rounded-[1.5rem] border border-dashed border-pink-200 bg-pink-50/60 px-5 py-10 text-sm text-pink-500 md:col-span-2 xl:col-span-3">
-              No assets have been published to the shared organization library yet.
+              No assets have been published to the shared Premium Suite library yet.
             </div>
           )}
         </div>

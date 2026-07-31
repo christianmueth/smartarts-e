@@ -38,6 +38,6 @@ export async function GET() {
     });
   } catch {
     // Always return JSON
-    return NextResponse.json({ ok: false, signedIn: false, xp: 0, streak: 0, xpToday: 0, dailyGoal: 50, isPremium: false, premiumStatus: null, premiumAccessUntil: null });
+    return NextResponse.json({ ok: false, signedIn: false, xp: 0, streak: 0, xpToday: 0, dailyGoal: 50, isPremium: false, billingTier: "free", premiumStatus: null, premiumAccessUntil: null });
   }
 }

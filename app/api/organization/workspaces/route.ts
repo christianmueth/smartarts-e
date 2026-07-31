@@ -18,8 +18,8 @@ export async function GET() {
     const workspaces = await listOrganizationWorkspacesForClerkUser(clerkUserId);
     return NextResponse.json({ ok: true, workspaces });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load organization workspaces.";
-    const status = /Organization billing is required/i.test(message) ? 403 : 400;
+    const message = error instanceof Error ? error.message : "Unable to load Premium Suite workspaces.";
+    const status = /Premium is required/i.test(message) ? 403 : 400;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
@@ -48,8 +48,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, workspaces });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to create organization workspace.";
-    const status = /Organization billing is required/i.test(message) ? 403 : 400;
+    const message = error instanceof Error ? error.message : "Unable to create Premium Suite workspace.";
+    const status = /Premium is required/i.test(message) ? 403 : 400;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

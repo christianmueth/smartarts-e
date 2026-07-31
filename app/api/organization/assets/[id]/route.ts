@@ -23,8 +23,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     return NextResponse.json({ ok: true, result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update organization sharing.";
-    const status = /Organization billing is required/i.test(message) ? 403 : 400;
+    const message = error instanceof Error ? error.message : "Unable to update Premium Suite sharing.";
+    const status = /Premium is required/i.test(message) ? 403 : 400;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

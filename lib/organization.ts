@@ -27,8 +27,8 @@ export type OrganizationSharedAsset = {
 
 export async function requireOrganizationAccessForClerkUser(clerkUserId: string) {
   const billing = await getBillingSnapshotForClerkUser(clerkUserId);
-  if (!billing.isOrganization) {
-    throw new Error("Organization billing is required for this feature.");
+  if (!billing.isPremium) {
+    throw new Error("Premium is required for the Premium Suite.");
   }
   return billing;
 }
