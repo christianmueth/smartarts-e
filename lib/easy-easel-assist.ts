@@ -409,7 +409,7 @@ async function generateExplanationSections(topic: string): Promise<ExplanationSe
   }
 
   const parsed = safeJsonParse(result.content);
-  const normalized = normalizeExplanationSections(parsed);
+  const normalized = normalizeExplanationSections(parsed, topic);
   return normalized;
 }
 
@@ -880,22 +880,20 @@ function buildExplanationLayout(
   prompt: string
 ): EditorAssistPlan {
   const width = clamp(Math.min(document.width - 80, 760), 320, document.width - 40);
-  const title = `Explain: ${toTitleText(topic) || topic}`;
-  const summaryLines = splitCanvasText(content.summary, 64);
-  const pointLines = content.keyPoints.map((point) => splitCanvasText(`• ${point}`, 62).join("\n"));
-  const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
-  const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
-  const cardHeight = 136 + summaryHeight + pointsHeight;
+  const title = toTitleText(topic) || "Explanation";
+  const bodyLines = splitCanvasText(formatExplanationText(content), 62);
+  const cardHeight = Math.max(176, 94 + bodyLines.length * 30);
   const placement = resolvePlanPlacement(document, prompt, width, cardHeight);
   const x = placement.x;
   const y = placement.y;
-  const summaryY = y + 96;
-  let pointY = summaryY + summaryHeight + 12;
 
-  const actions: EditorAssistAction[] = [
+  return {
+    mode: "canvas",
+    assistantMessage: `Writing a clear explanation of ${topic}.`,
+    actions: [
     {
       tool: "rect",
-      label: "Explanation card",
+      label: "Explanation text box",
       x,
       y,
       width,
@@ -915,54 +913,16 @@ function buildExplanationLayout(
       color: "#7a1f4f",
     },
     {
-      tool: "brush",
-      label: "Title underline",
-      points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
-      stroke: "#ff5fb2",
-      strokeWidth: 6,
-    },
-    {
       tool: "text",
-      label: "Explanation summary",
-      text: summaryLines.join("\n"),
+      label: "Explanation",
+      text: bodyLines.join("\n"),
       x: x + 24,
-      y: summaryY,
+      y: y + 78,
       width: width - 48,
-      fontSize: 28,
-      color: "#5f2141",
-    },
-  ];
-
-  pointLines.forEach((pointText, index) => {
-    const pointHeight = 24 + pointText.split("\n").length * 30;
-    actions.push({
-      tool: "rect",
-      label: `Key point card ${index + 1}`,
-      x: x + 24,
-      y: pointY,
-      width: width - 48,
-      height: pointHeight,
-      stroke: index % 2 === 0 ? "#ffb200" : "#5abf9a",
-      fill: index % 2 === 0 ? "rgba(255,214,82,0.18)" : "rgba(90,191,154,0.16)",
-      strokeWidth: 2,
-    });
-    actions.push({
-      tool: "text",
-      label: `Key point ${index + 1}`,
-      text: pointText,
-      x: x + 42,
-      y: pointY + 12,
-      width: width - 84,
       fontSize: 24,
       color: "#5f2141",
-    });
-    pointY += pointHeight + 12;
-  });
-
-  return {
-    mode: "canvas",
-    assistantMessage: `Writing an explanation about ${topic}.`,
-    actions,
+    },
+    ],
   };
 }
 
@@ -1381,16 +1341,24 @@ function splitCanvasText(value: string, maxLineLength: number) {
   return lines.slice(0, 7);
 }
 
-function normalizeExplanationSections(value: unknown): ExplanationSections | null {
+function normalizeExplanationSections(value: unknown, topic: string): ExplanationSections | null {
   const record = asRecord(value);
   const summary = cleanCanvasParagraph(record.summary as string);
   const keyPoints = Array.isArray(record.keyPoints)
     ? record.keyPoints.map((point) => cleanCanvasParagraph(point)).filter(Boolean).slice(0, 4)
     : [];
-  if (!summary || keyPoints.length < 2) {
+  const text = [summary, ...keyPoints].join(" ").toLowerCase();
+  const topicText = topic.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const isRequestEcho = topicText.length > 4 && (text === topicText || text.startsWith(`explain ${topicText}`));
+  const isGenericTemplate = /easiest to understand|start with the core definition|break the process or structure|why the topic is important/.test(text);
+  if (!summary || keyPoints.length < 2 || isRequestEcho || isGenericTemplate) {
     return null;
   }
   return { summary, keyPoints };
+}
+
+function formatExplanationText(content: ExplanationSections) {
+  return [content.summary, ...content.keyPoints.map((point) => `• ${point}`)].join("\n");
 }
 
 function buildDeterministicExplanationSections(topic: string): ExplanationSections {

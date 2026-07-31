@@ -2259,12 +2259,9 @@ function buildLocalCanvasFallbackPlan(
 function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: string, prompt: string): EditorAssistPlan {
   const normalizedTopic = toDisplayFallbackTopic(topic);
   const explanation = buildDeterministicExplanationSections(topic);
-  const summaryLines = wrapFallbackText(explanation.summary, 64);
-  const pointLines = explanation.keyPoints.map((point) => wrapFallbackText(`• ${point}`, 62).join("\n"));
+  const bodyLines = wrapFallbackText([explanation.summary, ...explanation.keyPoints.map((point) => `• ${point}`)].join(" "), 62);
   const width = Math.max(340, Math.min(document.width - 80, 760));
-  const summaryHeight = Math.max(86, 18 + summaryLines.length * 34);
-  const pointsHeight = pointLines.reduce((total, point) => total + 24 + point.split("\n").length * 30, 0);
-  const cardHeight = 136 + summaryHeight + pointsHeight;
+  const cardHeight = Math.max(176, 94 + bodyLines.length * 30);
   const placement = resolveFallbackPlacement(document, prompt, width, cardHeight);
   const x = placement.x;
   const y = placement.y;
@@ -2284,7 +2281,7 @@ function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: strin
     {
       tool: "text",
       label: "Explanation title",
-      text: `Explain: ${normalizedTopic}`,
+      text: normalizedTopic,
       x: x + 24,
       y: y + 22,
       width: width - 48,
@@ -2292,50 +2289,16 @@ function buildExplanationAssistPlan(document: EditorCanvasDocument, topic: strin
       color: "#7a1f4f",
     },
     {
-      tool: "brush",
-      label: "Title underline",
-      points: [x + 24, y + 70, x + width * 0.42, y + 73, x + width * 0.82, y + 69],
-      stroke: "#ff5fb2",
-      strokeWidth: 6,
-    },
-    {
       tool: "text",
-      label: "Explanation summary",
-      text: summaryLines.join("\n"),
+      label: "Explanation",
+      text: bodyLines.join("\n"),
       x: x + 24,
-      y: y + 96,
+      y: y + 78,
       width: width - 48,
-      fontSize: 28,
+      fontSize: 24,
       color: "#5f2141",
     },
   ];
-
-  let pointY = y + 96 + summaryHeight + 12;
-  pointLines.forEach((pointText, index) => {
-    const pointHeight = 24 + pointText.split("\n").length * 30;
-    actions.push({
-      tool: "rect",
-      label: `Key point card ${index + 1}`,
-      x: x + 24,
-      y: pointY,
-      width: width - 48,
-      height: pointHeight,
-      stroke: index % 2 === 0 ? "#ffb200" : "#5abf9a",
-      fill: index % 2 === 0 ? "rgba(255,214,82,0.18)" : "rgba(90,191,154,0.16)",
-      strokeWidth: 2,
-    });
-    actions.push({
-      tool: "text",
-      label: `Key point ${index + 1}`,
-      text: pointText,
-      x: x + 42,
-      y: pointY + 12,
-      width: width - 84,
-      fontSize: 24,
-      color: "#5f2141",
-    });
-    pointY += pointHeight + 12;
-  });
 
   return {
     mode: "canvas",
