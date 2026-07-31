@@ -467,7 +467,8 @@ async function generateMathSolution(prompt: string): Promise<MathSolution | null
         content: [
           "You are a careful Easy Easel math tutor.",
           "Solve the user's math, calculus, or quantitative economics request and return JSON only.",
-          "Use plain-text ASCII math such as x^2, f'(x), integral_0^1, and dQ/dP; do not use LaTex or markdown.",
+          "Use readable Unicode mathematical notation, not LaTeX or markdown. You may use +, −, ×, ÷, =, ≠, ≈, <, ≤, ≥, ±, ∞, √, π, ∑, ∏, ∫, ∂, ∆, ∇, ∈, ∉, ∪, ∩, ⊆, →, ↦, α, β, γ, θ, λ, μ, σ, and superscript characters such as ² and ³.",
+          "Write calculus clearly in one line where possible, for example ∫₀² 3x² dx = [x³]₀² = 8, f′(x), ∂f/∂x, limₓ→a f(x), and ∑ₖ₌₁ⁿ k. Use Unicode subscripts for short bounds and indices when useful.",
           "Give a short title, a direct final result, and 2-5 concise working steps that show substitutions or algebra.",
           "For economics, state the relevant equation and interpret the numerical result when the prompt supplies enough data.",
           "Do not echo the request. If necessary information is missing, state exactly what is needed in the result and show the applicable formula in the steps.",
@@ -1397,12 +1398,12 @@ function buildDeterministicMathSolution(prompt: string): MathSolution | null {
   if (/fundamental theorem of calculus|\bftc\b|definite integral/i.test(compact)) {
     return {
       title: "Fundamental Theorem of Calculus",
-      result: "If F'(x) = f(x), then integral_a^b f(x) dx = F(b) - F(a).",
+      result: "If F′(x) = f(x), then ∫ₐᵇ f(x) dx = F(b) − F(a).",
       steps: [
         "Find an antiderivative F(x) for the integrand f(x).",
         "Evaluate F at the upper bound b.",
-        "Subtract the lower-bound value F(a): F(b) - F(a).",
-        "Example: integral_0^2 3x^2 dx = [x^3]_0^2 = 8.",
+        "Subtract the lower-bound value: F(b) − F(a).",
+        "Example: ∫₀² 3x² dx = [x³]₀² = 8.",
       ],
     };
   }
@@ -1410,8 +1411,8 @@ function buildDeterministicMathSolution(prompt: string): MathSolution | null {
   if (/\b(?:derivative|differentiate)\b/i.test(compact)) {
     return {
       title: "Derivative method",
-      result: "For a power term, d/dx[c*x^n] = c*n*x^(n-1).",
-      steps: ["Differentiate each term separately.", "Multiply the coefficient by the exponent.", "Reduce the exponent by 1 and simplify constants."],
+      result: "For c·xⁿ, d/dx[c·xⁿ] = c·n·xⁿ⁻¹.",
+      steps: ["Differentiate each term separately.", "Multiply the coefficient by the exponent n.", "Reduce the exponent by 1, then simplify constants."],
     };
   }
 
@@ -1419,7 +1420,7 @@ function buildDeterministicMathSolution(prompt: string): MathSolution | null {
     return {
       title: "Economics calculation setup",
       result: "Choose the equation, substitute the data, then interpret sign, units, and size.",
-      steps: ["For profit use profit = total revenue - total cost.", "For marginal values use the derivative, such as MR = dTR/dQ.", "For elasticity use (% change in Q)/(% change in P): magnitude above 1 is elastic, below 1 is inelastic."],
+      steps: ["Profit: π = TR − TC.", "Marginal revenue: MR = dTR/dQ; marginal cost: MC = dTC/dQ.", "Elasticity: Eₚ = (%∆Q)/(%∆P); |Eₚ| > 1 is elastic and |Eₚ| < 1 is inelastic."],
     };
   }
 

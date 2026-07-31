@@ -1992,7 +1992,9 @@ function buildLayerFromAssistAction(action: EditorAssistAction, document: Editor
       text,
       fill: String(action.color || "#7a1f4f"),
       fontSize: Math.max(18, Math.round(Number(action.fontSize || 42))),
-      fontFamily: "Manrope",
+      fontFamily: /^(?:Math title|Math working)$/i.test(String(action.label || ""))
+        ? "Cambria Math, STIX Two Math, Cambria, serif"
+        : "Manrope",
     };
   }
 
@@ -2358,14 +2360,22 @@ function buildLocalMathAssistPlan(prompt: string, document: EditorCanvasDocument
         `Divide both sides by ${coefficient}.`,
       ];
     }
-  } else if (/\b(?:derivative|differentiate|integral|integrate|calculus)\b/i.test(compact)) {
+  } else if (/fundamental theorem of calculus|\bftc\b|definite integral/i.test(compact)) {
+    title = "Fundamental Theorem of Calculus";
+    result = "∫ₐᵇ f(x) dx = F(b) − F(a), where F′(x) = f(x).";
+    steps = ["Find an antiderivative F(x).", "Evaluate the endpoints: F(b) − F(a).", "Example: ∫₀² 3x² dx = [x³]₀² = 8."];
+  } else if (/\b(?:summation|sum|series)\b/i.test(compact)) {
+    title = "Summation setup";
+    result = "Use ∑ₖ₌₁ⁿ to add terms from k = 1 through n.";
+    steps = ["Write the general term as a function of k.", "Set the lower and upper bounds on ∑.", "For example, ∑ₖ₌₁ⁿ k = n(n + 1)/2."];
+  } else if (/\b(?:derivative|differentiate|integral|integrate|calculus|limit)\b/i.test(compact)) {
     title = "Calculus setup";
-    result = "Use the power rule: d/dx[x^n] = n*x^(n-1).";
-    steps = ["Apply the rule to each term separately.", "Simplify the resulting expression after differentiating."];
+    result = "Power rule: d/dx[xⁿ] = n·xⁿ⁻¹.";
+    steps = ["Apply the rule to each term separately.", "For integrals, use ∫ f(x) dx and add C for an indefinite integral.", "Simplify the resulting expression."];
   } else if (/\b(?:elasticity|supply|demand|revenue|cost|profit|marginal)\b/i.test(compact)) {
     title = "Economics calculation setup";
     result = "Choose the relevant relationship and substitute the provided values.";
-    steps = ["For profit, use revenue - cost; for elasticity, use (% change in Q)/(% change in P).", "Compute the value and interpret its sign and units."];
+    steps = ["Profit: π = TR − TC. Marginal revenue: MR = dTR/dQ.", "Elasticity: Eₚ = (%∆Q)/(%∆P).", "Compute the value and interpret its sign and units."];
   } else {
     return null;
   }
