@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { toast } from "sonner";
 import type { EditorAsset } from "@/types/easy-easel";
+import type { StudioLibraryAsset } from "@/lib/studio";
 
 const CANVAS_WIDTH = 1000;
 const CANVAS_HEIGHT = 640;
@@ -56,13 +57,13 @@ const aiActions = [
   ["enhance", "Relight / enhance"],
 ] as const;
 
-export default function EEditorWorkspace({ initialAssets }: { initialAssets: EditorAsset[] }) {
+export default function EEditorWorkspace({ initialAssets }: { initialAssets: StudioLibraryAsset[] }) {
   const initialLibrary = useMemo<LibraryItem[]>(() => initialAssets.map((asset) => ({
     id: asset.id,
     title: asset.title,
-    imageUrl: asset.imageUrl,
+    imageUrl: asset.sourceUrl,
     assetId: asset.id,
-    kind: asset.type === "generated" ? "generated" : asset.type === "edited" ? "edit" : "upload",
+    kind: asset.projectName === "Generated" ? "generated" : "edit",
   })), [initialAssets]);
   const [library, setLibrary] = useState(initialLibrary);
   const [layers, setLayers] = useState<EditorLayer[]>([]);
@@ -98,6 +99,42 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
       window.localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      const isMeta = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (isMeta && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (isMeta && key === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (isMeta && key === "d" && selectedLayerId) {
+        event.preventDefault();
+        const layer = layersRef.current.find((item) => item.id === selectedLayerId);
+        if (!layer) return;
+        const copy = { ...layer, id: createId("copy"), name: `${layer.name} copy`, x: layer.x + 16, y: layer.y + 16 };
+        commitLayers([...layersRef.current, copy], "Duplicate layer");
+        setSelectedLayerId(copy.id);
+        return;
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedLayerId) {
+        event.preventDefault();
+        commitLayers(layersRef.current.filter((layer) => layer.id !== selectedLayerId), "Delete layer");
+        setSelectedLayerId(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [historyIndex, selectedLayerId]);
 
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) || null;
 
@@ -272,6 +309,33 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
     }
   }
 
+  async function generateLibraryImage() {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      toast.error("Describe the image to generate first.");
+      return;
+    }
+    setRunningAiAction("generate");
+    try {
+      const response = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, count: 1 }),
+      });
+      const data = await response.json().catch(() => null);
+      const asset = data?.assets?.[0] as EditorAsset | undefined;
+      if (!response.ok || !asset) throw new Error("Image generation is unavailable.");
+      const item: LibraryItem = { id: asset.id, assetId: asset.id, title: asset.title, imageUrl: asset.imageUrl, kind: "generated" };
+      setLibrary((current) => [item, ...current.filter((currentItem) => currentItem.id !== item.id)]);
+      addImage(item, { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 }, "Generate image");
+      toast.success("Generated image added to the shared library.");
+    } catch {
+      toast.error("Image generation is unavailable right now.");
+    } finally {
+      setRunningAiAction(null);
+    }
+  }
+
   async function runAiAction(action: (typeof aiActions)[number][0], label: string) {
     if (!selectedLayer || selectedLayer.type !== "image" || !selectedLayer.src) {
       toast.error("Select an image layer first.");
@@ -407,7 +471,7 @@ export default function EEditorWorkspace({ initialAssets }: { initialAssets: Edi
 
         <aside className="space-y-3">
           <section className="rounded-lg border border-pink-200 bg-white/90 p-3 shadow-[0_10px_24px_rgba(255,129,181,0.1)]">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Image library</h2><button type="button" onClick={() => inputRef.current?.click()} className="rounded-md border border-pink-200 bg-pink-50 px-2 py-1 text-xs font-semibold text-pink-700 hover:bg-pink-100">Upload</button></div>
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">Image library</h2><div className="flex gap-1"><button type="button" onClick={() => void generateLibraryImage()} disabled={runningAiAction !== null} className="rounded-md border border-yellow-300 bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-900 hover:bg-yellow-100 disabled:opacity-40">Generate</button><button type="button" onClick={() => inputRef.current?.click()} className="rounded-md border border-pink-200 bg-pink-50 px-2 py-1 text-xs font-semibold text-pink-700 hover:bg-pink-100">Upload</button></div></div>
             <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void uploadImage(event.target.files?.[0] || null)} />
             <div className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto">
               {library.length ? library.map((asset) => <button key={asset.id} type="button" draggable onDragStart={(event) => event.dataTransfer.setData("e-editor-asset", asset.id)} onClick={() => addImage(asset)} title={`Place ${asset.title}`} className="aspect-square overflow-hidden rounded-md border border-pink-200 bg-white"><img src={asset.imageUrl} alt={asset.title} className="h-full w-full object-cover" /></button>) : <p className="col-span-4 py-4 text-center text-xs text-pink-600">Upload or drag an image here.</p>}
