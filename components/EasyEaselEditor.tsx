@@ -59,6 +59,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const nodeRefs = useRef<Record<string, Konva.Group | null>>({});
+  const isManualZoomRef = useRef(false);
   const isDrawingRef = useRef(false);
   const cropAnchorRef = useRef<{ x: number; y: number } | null>(null);
   const selectionGestureRef = useRef<{ x: number; y: number; mode: "rect" | "lasso" } | null>(null);
@@ -108,6 +109,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
   useEffect(() => {
     if (!canvasViewport.width || !canvasViewport.height) return;
+    if (isManualZoomRef.current) return;
     const horizontalPadding = 32;
     const verticalPadding = 32;
     const fitZoom = Math.min(
@@ -1154,6 +1156,22 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const canvasWidth = Math.round(document.width * zoom);
   const canvasHeight = Math.round(document.height * zoom);
 
+  function setManualZoom(nextZoom: number) {
+    isManualZoomRef.current = true;
+    setZoom(Number(Math.min(2, Math.max(0.18, nextZoom)).toFixed(3)));
+  }
+
+  function fitCanvasToViewport() {
+    if (!canvasViewport.width || !canvasViewport.height) return;
+    isManualZoomRef.current = false;
+    const fitZoom = Math.min(
+      (canvasViewport.width - 32) / document.width,
+      (canvasViewport.height - 32) / document.height,
+      1
+    );
+    setZoom(Number(Math.max(0.18, fitZoom).toFixed(3)));
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,183,212,0.42),_transparent_28%),linear-gradient(180deg,_#fff6d6_0%,_#fff7fb_48%,_#fff0b8_100%)] text-[#5f2141]">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-5 md:px-6 md:py-6">
@@ -1238,9 +1256,10 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                 <span className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-sm font-medium text-yellow-900">{document.width} x {document.height}</span>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setZoom((current) => Math.max(0.3, Number((current - 0.1).toFixed(2))))} className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-sm text-pink-700">-</button>
+                <button type="button" onClick={() => setManualZoom(zoom - 0.1)} className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-sm text-pink-700">-</button>
                 <span className="min-w-[70px] text-center text-sm font-medium text-pink-700">{Math.round(zoom * 100)}%</span>
-                <button type="button" onClick={() => setZoom((current) => Math.min(2, Number((current + 0.1).toFixed(2))))} className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-sm text-pink-700">+</button>
+                <button type="button" onClick={() => setManualZoom(zoom + 0.1)} className="rounded-full border border-pink-200 bg-white px-3 py-1.5 text-sm text-pink-700">+</button>
+                <button type="button" onClick={fitCanvasToViewport} className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm text-yellow-900">Fit</button>
               </div>
             </div>
 
