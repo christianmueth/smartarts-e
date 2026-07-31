@@ -26,13 +26,41 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendPass(actions, "background", pixels, sampling, bounds, 3, 0.58, 1.85, 130, (pixel) => isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 2, 0.66, 1.4, 220, (pixel) => !isBackgroundPixel(pixel, backgroundColors));
-  appendPass(actions, "shading", pixels, sampling, bounds, 3, 0.4, 0.78, 100, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendUnderpainting(actions, pixels, sampling, bounds);
+  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, 180, (_pixel, x, y) => isRefinementCandidate(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
 
   return actions;
+}
+
+function appendUnderpainting(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number }
+) {
+  const stride = 1;
+  for (let y = 0; y < sampling.rows; y += stride) {
+    for (let x = 0; x < sampling.columns; x += stride) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      actions.push({
+        tool: "rect",
+        pass: "background",
+        label: `Underpainting region ${actions.length + 1}`,
+        x: bounds.x + x * sampling.cellWidth,
+        y: bounds.y + y * sampling.cellHeight,
+        width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth * stride + 1),
+        height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight * stride + 1),
+        fill: toColor(quantizePixel(pixel, 16)),
+        stroke: "rgba(0,0,0,0)",
+        strokeWidth: 1,
+        opacity: 1,
+      });
+    }
+  }
 }
 
 function appendPass(
@@ -44,10 +72,8 @@ function appendPass(
   stride: number,
   opacity: number,
   widthMultiplier: number,
-  maxStrokes: number,
   include: (pixel: Pixel, x: number, y: number) => boolean
 ) {
-  const candidates: Array<{ action: EditorAssistAction; priority: number }> = [];
   for (let y = 0; y < sampling.rows; y += stride) {
     const rowOffset = (Math.floor(y / stride) % 2) * Math.max(1, Math.floor(stride / 2));
     for (let x = rowOffset; x < sampling.columns; x += stride) {
@@ -59,9 +85,7 @@ function appendPass(
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
       const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
-          const contrast = localContrast(pixels, sampling.columns, sampling.rows, x, y);
-          const brushScale = adaptiveBrushScale(pass, contrast);
-          const length = unit * brushScale * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
+      const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
           const jitter = strokeJitter(x, y, pass, unit * 1.25);
           const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
           const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
@@ -69,22 +93,17 @@ function appendPass(
       const offsetY = Math.sin(direction) * length * 0.5;
       const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
       const curveY = Math.sin(direction + Math.PI / 2) * length * 0.08;
-      candidates.push({
-        priority: pass === "background" ? 255 - contrast : refinementError(pixels, sampling.columns, sampling.rows, x, y),
-        action: {
+      actions.push({
         tool: "brush",
         pass,
-        label: passLabel(pass),
+        label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale),
+        strokeWidth: Math.max(1, unit * widthMultiplier),
         opacity,
-        },
       });
     }
   }
-  candidates.sort((first, second) => second.priority - first.priority);
-  actions.push(...candidates.slice(0, maxStrokes).map((candidate) => candidate.action));
 }
 
 function getSampling(detailLevel: EditorPaintDetailLevel, width: number, height: number) {
@@ -240,7 +259,6 @@ function appendFaceFeaturePass(
   for (const candidate of candidates) {
     if (selected.some((feature) => Math.abs(feature.x - candidate.x) < 2 && Math.abs(feature.y - candidate.y) < 2)) continue;
     selected.push(candidate);
-    if (selected.length === 70) break;
   }
 
   for (const feature of selected) {
@@ -314,43 +332,6 @@ function localContrast(data: Uint8ClampedArray, columns: number, rows: number, x
   );
 }
 
-function refinementError(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
-  const pixel = sample(data, columns, rows, x, y);
-  const broadTone = averageWindow(data, columns, rows, x, y, 4);
-  return colorDistance(pixel, broadTone) + localContrast(data, columns, rows, x, y) * 0.6;
-}
-
-function averageWindow(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number, radius: number): Pixel {
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  let alpha = 0;
-  let count = 0;
-  for (let yOffset = -radius; yOffset <= radius; yOffset += 1) {
-    for (let xOffset = -radius; xOffset <= radius; xOffset += 1) {
-      const pixel = sample(data, columns, rows, x + xOffset, y + yOffset);
-      red += pixel.red;
-      green += pixel.green;
-      blue += pixel.blue;
-      alpha += pixel.alpha;
-      count += 1;
-    }
-  }
-  return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
-}
-
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
   return { red: Math.round(pixel.red * factor), green: Math.round(pixel.green * factor), blue: Math.round(pixel.blue * factor), alpha: pixel.alpha };
-}
-
-function isRefinementCandidate(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
-  const contrast = localContrast(data, columns, rows, x, y);
-  return contrast > 76 || (contrast > 54 && isEdge(data, columns, rows, x, y));
-}
-
-function adaptiveBrushScale(pass: EditorPaintPass, contrast: number) {
-  if (pass === "background") return contrast < 28 ? 1.45 : 1.15;
-  if (pass === "major-forms") return contrast > 100 ? 0.72 : contrast > 64 ? 0.9 : 1.2;
-  if (pass === "shading") return contrast > 76 ? 0.82 : 1.08;
-  return contrast > 100 ? 0.72 : 0.9;
 }
