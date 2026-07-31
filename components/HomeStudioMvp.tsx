@@ -476,7 +476,7 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
               </button>
               {signedIn && generationAccess ? (
                 <span className="text-sm text-pink-800/75">
-                  {generationAccess.isPremium ? "Premium image generation" : `${generationAccess.remaining} free images remaining`}
+                  {generationAccess.isPremium ? "Premium image generation" : `${generationAccess.remaining} free images remaining this month`}
                 </span>
               ) : null}
             </div>

@@ -28,7 +28,7 @@ export default async function BillingPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Billing</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#7a1f4f]">Simple billing: Free or Premium.</h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-pink-900/80">
-            Free gives access to the base product. Premium unlocks the full SmartArts-E workflow, including Premium Suite collaboration features, under one monthly subscription.
+            Free includes 10 image generations each calendar month. Premium unlocks unlimited image generation and the full SmartArts-E workflow, including Premium Suite collaboration features.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700">

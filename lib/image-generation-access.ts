@@ -7,14 +7,25 @@ type GenerationReservation = {
   clerkUserId: string;
   reservedCount: number;
   isPremium: boolean;
+  periodStartedAt: Date | null;
 };
 
 export async function getImageGenerationAccessForClerkUser(clerkUserId: string) {
   const [billing, user] = await Promise.all([
     getBillingSnapshotForClerkUser(clerkUserId),
-    safeUpsertUser(clerkUserId, { imageGenerationCount: true }),
+    safeUpsertUser(clerkUserId, { id: true, imageGenerationCount: true, imageGenerationPeriodStartedAt: true }),
   ]);
-  const used = user?.imageGenerationCount || 0;
+  const monthStartedAt = startOfCurrentMonth();
+  if (user && user.imageGenerationPeriodStartedAt < monthStartedAt) {
+    await prisma.user.updateMany({
+      where: { id: user.id, imageGenerationPeriodStartedAt: { lt: monthStartedAt } },
+      data: { imageGenerationCount: 0, imageGenerationPeriodStartedAt: monthStartedAt },
+    });
+  }
+  const currentUser = user
+    ? await prisma.user.findUnique({ where: { id: user.id }, select: { imageGenerationCount: true } })
+    : null;
+  const used = currentUser?.imageGenerationCount || 0;
 
   return {
     isPremium: billing.isPremium,
@@ -26,9 +37,10 @@ export async function getImageGenerationAccessForClerkUser(clerkUserId: string) 
 
 export async function reserveImageGenerations(clerkUserId: string, requestedCount: number): Promise<GenerationReservation> {
   const count = Math.max(1, Math.floor(requestedCount));
+  const monthStartedAt = startOfCurrentMonth();
   const billing = await getBillingSnapshotForClerkUser(clerkUserId);
   if (billing.isPremium) {
-    return { clerkUserId, reservedCount: 0, isPremium: true };
+    return { clerkUserId, reservedCount: 0, isPremium: true, periodStartedAt: null };
   }
 
   const user = await safeUpsertUser(clerkUserId, { id: true });
@@ -36,18 +48,30 @@ export async function reserveImageGenerations(clerkUserId: string, requestedCoun
     throw new Error("User persistence is unavailable right now.");
   }
 
+  const resetAndReserve = await prisma.user.updateMany({
+    where: {
+      id: user.id,
+      imageGenerationPeriodStartedAt: { lt: monthStartedAt },
+    },
+    data: { imageGenerationCount: count, imageGenerationPeriodStartedAt: monthStartedAt },
+  });
+  if (resetAndReserve.count === 1) {
+    return { clerkUserId, reservedCount: count, isPremium: false, periodStartedAt: monthStartedAt };
+  }
+
   const updated = await prisma.user.updateMany({
     where: {
       id: user.id,
+      imageGenerationPeriodStartedAt: { gte: monthStartedAt },
       imageGenerationCount: { lte: FREE_IMAGE_GENERATION_LIMIT - count },
     },
     data: { imageGenerationCount: { increment: count } },
   });
   if (updated.count !== 1) {
-    throw new Error(`Your ${FREE_IMAGE_GENERATION_LIMIT} free image generations are used. Upgrade to Premium to continue with Easy Easel.`);
+    throw new Error(`Your ${FREE_IMAGE_GENERATION_LIMIT} free image generations for this month are used. Upgrade to Premium to continue with Easy Easel.`);
   }
 
-  return { clerkUserId, reservedCount: count, isPremium: false };
+  return { clerkUserId, reservedCount: count, isPremium: false, periodStartedAt: monthStartedAt };
 }
 
 export async function settleImageGenerationReservation(reservation: GenerationReservation, producedCount: number) {
@@ -57,9 +81,13 @@ export async function settleImageGenerationReservation(reservation: GenerationRe
 
   const user = await safeUpsertUser(reservation.clerkUserId, { id: true });
   if (!user) return;
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.user.updateMany({
+    where: { id: user.id, imageGenerationPeriodStartedAt: reservation.periodStartedAt || undefined },
     data: { imageGenerationCount: { decrement: unusedCount } },
-    select: { id: true },
   });
+}
+
+function startOfCurrentMonth() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
