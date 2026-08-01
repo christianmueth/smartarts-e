@@ -59,7 +59,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [aiPrompt, setAiPrompt] = useState("");
   const [paintReferenceAssetId, setPaintReferenceAssetId] = useState<string | null>(null);
   const [paintDetailLevel, setPaintDetailLevel] = useState<EditorPaintDetailLevel>("refined");
-  const [paintStyle, setPaintStyle] = useState<EditorPaintStyle>("realistic");
+  const [paintStyle, setPaintStyle] = useState<EditorPaintStyle>("oil");
   const [activePaintSessionId, setActivePaintSessionId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
@@ -1623,10 +1623,10 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                   <label className="block">
                     Painting style
                     <select value={paintStyle} onChange={(event) => setPaintStyle(event.target.value as EditorPaintStyle)} className="mt-1 w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm">
-                      <option value="realistic">Realistic</option>
                       <option value="oil">Oil</option>
                       <option value="watercolor">Watercolor</option>
                       <option value="sketch">Sketch</option>
+                      <option value="realistic">Realistic</option>
                     </select>
                   </label>
                   <div className="flex flex-wrap gap-2">
