@@ -21,10 +21,14 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   context.drawImage(image, 0, 0, source.width, source.height);
   const fullResolutionPixels = context.getImageData(0, 0, source.width, source.height).data;
   const pixels = samplePlanningPixels(fullResolutionPixels, source.width, source.height, sampling);
+  const pyramid = buildReferencePyramid(fullResolutionPixels, source.width, source.height);
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
   appendUnderpainting(actions, pixels, sampling, bounds, input.style);
+  if (isPainterlyStyle(input.style)) {
+    appendPainterlyReconstruction(actions, pixels, pyramid, sampling, bounds, input.style);
+  }
   appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
   appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
   appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, input.style, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
@@ -174,6 +178,106 @@ function samplePlanningPixels(
     }
   }
   return plannedPixels;
+}
+
+type ReferencePyramid = {
+  composition: { pixels: Uint8ClampedArray; columns: number; rows: number };
+  forms: { pixels: Uint8ClampedArray; columns: number; rows: number };
+  details: { pixels: Uint8ClampedArray; columns: number; rows: number };
+};
+
+function buildReferencePyramid(sourcePixels: Uint8ClampedArray, sourceWidth: number, sourceHeight: number): ReferencePyramid {
+  return {
+    composition: buildPyramidLevel(sourcePixels, sourceWidth, sourceHeight, 32),
+    forms: buildPyramidLevel(sourcePixels, sourceWidth, sourceHeight, 64),
+    details: buildPyramidLevel(sourcePixels, sourceWidth, sourceHeight, 128),
+  };
+}
+
+function buildPyramidLevel(sourcePixels: Uint8ClampedArray, sourceWidth: number, sourceHeight: number, maximumSide: number) {
+  const scale = Math.min(1, maximumSide / Math.max(sourceWidth, sourceHeight));
+  const columns = Math.max(1, Math.round(sourceWidth * scale));
+  const rows = Math.max(1, Math.round(sourceHeight * scale));
+  return { pixels: samplePlanningPixels(sourcePixels, sourceWidth, sourceHeight, { columns, rows }), columns, rows };
+}
+
+function samplePyramid(level: ReferencePyramid[keyof ReferencePyramid], x: number, y: number, columns: number, rows: number) {
+  const levelX = Math.round((x / Math.max(1, columns - 1)) * Math.max(0, level.columns - 1));
+  const levelY = Math.round((y / Math.max(1, rows - 1)) * Math.max(0, level.rows - 1));
+  return sample(level.pixels, level.columns, level.rows, levelX, levelY);
+}
+
+function appendPainterlyReconstruction(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  pyramid: ReferencePyramid,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  style: EditorPaintStyle
+) {
+  const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+  const candidates: Array<{ x: number; y: number; score: number }> = [];
+  for (let y = 1; y < sampling.rows - 1; y += 2) {
+    for (let x = 1; x < sampling.columns - 1; x += 2) {
+      candidates.push({ x, y, score: reconstructionPriority(pixels, sampling.columns, sampling.rows, x, y) });
+    }
+  }
+  candidates.sort((first, second) => second.score - first.score);
+
+  const structureLimit = style === "oil" ? 360 : 280;
+  for (const candidate of candidates.slice(0, structureLimit)) {
+    const compositionColor = samplePyramid(pyramid.composition, candidate.x, candidate.y, sampling.columns, sampling.rows);
+    const formColor = samplePyramid(pyramid.forms, candidate.x, candidate.y, sampling.columns, sampling.rows);
+    const detailColor = samplePyramid(pyramid.details, candidate.x, candidate.y, sampling.columns, sampling.rows);
+    const contrast = localContrast(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "major-forms");
+    const jitter = strokeJitter(candidate.x, candidate.y, "major-forms", unit * 0.38, 0.26);
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth + jitter.x;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight + jitter.y;
+    const length = unit * (contrast > 90 ? 1.25 : 2.05);
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "major-forms",
+      label: "Structure reconstruction",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(contrast > 90 ? detailColor : contrast > 35 ? formColor : compositionColor),
+      strokeWidth: Math.max(1, unit * (contrast > 90 ? 0.58 : 0.95)),
+      opacity: style === "oil" ? 0.72 : 0.64,
+    });
+  }
+
+  const contourCandidates = candidates.filter((candidate) => isEdge(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y));
+  for (const candidate of contourCandidates.slice(0, style === "oil" ? 220 : 180)) {
+    const color = samplePyramid(pyramid.details, candidate.x, candidate.y, sampling.columns, sampling.rows);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const length = unit * 1.1;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "final-detail",
+      label: "Contour preservation",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(color),
+      strokeWidth: Math.max(1, unit * 0.32),
+      opacity: 0.78,
+    });
+  }
+}
+
+function reconstructionPriority(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const focalBonus = isFocalDetail(data, columns, rows, x, y) ? 220 : 0;
+  const edgeBonus = isEdge(data, columns, rows, x, y) ? 125 : 0;
+  const structure = refinementError(data, columns, rows, x, y);
+  return structure + edgeBonus + focalBonus;
+}
+
+function isPainterlyStyle(style: EditorPaintStyle) {
+  return style === "oil" || style === "watercolor";
 }
 
 function fitReference(sourceWidth: number, sourceHeight: number, canvasWidth: number, canvasHeight: number) {
@@ -354,6 +458,7 @@ function appendRefinementPass(
   const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
     for (let x = 1; x < sampling.columns - 1; x += 2) {
+      if (isEdge(pixels, sampling.columns, sampling.rows, x, y) || isFocalDetail(pixels, sampling.columns, sampling.rows, x, y)) continue;
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
       const score = refinementPriority(pixels, sampling.columns, sampling.rows, x, y);
       if (score > 72) candidates.push({ x, y, score, pixel });
