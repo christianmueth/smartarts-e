@@ -39,6 +39,7 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
     appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
     appendEdgeSharpeningPass(actions, pixels, sampling, bounds, input.style);
     appendFeatureLockPass(actions, pixels, sampling, bounds, input.detailLevel, input.style);
+    appendMicroFeaturePass(actions, pixels, sampling, bounds, input.detailLevel, input.style);
   }
 
   return applyPaintingStyle(actions, input.style);
@@ -723,6 +724,64 @@ function appendFeatureLockPass(
       opacity: style === "oil" ? 0.92 : 0.82,
     });
   }
+}
+
+function appendMicroFeaturePass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  detailLevel: EditorPaintDetailLevel,
+  style: EditorPaintStyle
+) {
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  const top = Math.floor(sampling.rows * 0.1);
+  const bottom = Math.ceil(sampling.rows * 0.76);
+  const left = Math.floor(sampling.columns * 0.12);
+  const right = Math.ceil(sampling.columns * 0.88);
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const pixel = sample(pixels, sampling.columns, sampling.rows, x, y);
+      const contrast = localContrast(pixels, sampling.columns, sampling.rows, x, y);
+      const focal = isFocalDetail(pixels, sampling.columns, sampling.rows, x, y);
+      const edge = isEdge(pixels, sampling.columns, sampling.rows, x, y);
+      if (!focal && !edge && contrast < 115) continue;
+      candidates.push({ x, y, score: contrast + (focal ? 320 : 0) + (edge ? 160 : 0), pixel });
+    }
+  }
+  candidates.sort((first, second) => second.score - first.score);
+  const selected: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  const limit = detailLevel === "study" ? 160 : detailLevel === "refined" ? 520 : 1_100;
+  for (const candidate of candidates) {
+    if (selected.some((item) => Math.abs(item.x - candidate.x) < 1 && Math.abs(item.y - candidate.y) < 1)) continue;
+    selected.push(candidate);
+    if (selected.length === limit) break;
+  }
+
+  for (const candidate of selected) {
+    const contrast = localContrast(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "facial-features");
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const length = contrast > 170 ? 3 : 2;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "facial-features",
+      label: "Micro feature refinement",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(boostLocalContrast(candidate.pixel, contrast)),
+      strokeWidth: 1,
+      opacity: style === "oil" ? 0.96 : 0.86,
+    });
+  }
+}
+
+function boostLocalContrast(pixel: Pixel, contrast: number): Pixel {
+  const factor = brightness(pixel) < 118 ? 0.72 : contrast > 150 ? 1.16 : 1.04;
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value * factor)));
+  return { red: clamp(pixel.red), green: clamp(pixel.green), blue: clamp(pixel.blue), alpha: pixel.alpha };
 }
 
 function perturbPixel(pixel: Pixel, x: number, y: number, range: number): Pixel {
