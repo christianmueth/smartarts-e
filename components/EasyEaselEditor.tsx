@@ -32,14 +32,10 @@ type Props = {
 
 const LOCAL_EDITOR_PROJECTS_STORAGE_KEY = "easy-easel-local-projects-v1";
 const IMAGE_AI_ACTIONS = [
-  ["Remove background", "Remove the background while preserving the main subject."],
-  ["Remove object", "Remove the distracting object and reconstruct a natural background."],
-  ["Replace object", "Replace the selected object according to this instruction."],
-  ["Expand image", "Expand the image beyond its current edges while matching the existing scene."],
-  ["Inpaint", "Inpaint the marked area according to this instruction."],
-  ["Restyle", "Restyle this image with a polished watercolor or oil-painting aesthetic while preserving the subject."],
-  ["Upscale", "Upscale the image and preserve its important details."],
-  ["Relight / enhance", "Improve the lighting, color balance, and detail while preserving the image."],
+  ["Restyle", "Restyle this image with a polished artistic treatment while keeping the subject recognizable."],
+  ["Relight / enhance", "Relight and enhance this image with balanced exposure, natural contrast, and clear details."],
+  ["Remove background", "Remove the background and keep the main subject cleanly isolated."],
+  ["Remove object", "Remove the most distracting non-subject object while preserving the primary subject and surrounding scene."],
 ] as const;
 
 export default function EasyEaselEditor({ initialAssets, initialProjects, initialProject }: Props) {
@@ -1697,13 +1693,18 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI actions</summary>
                 <div className="mt-3 space-y-3">
+                  <p className="text-xs font-medium text-pink-700">Select an existing image layer, then give AI a command to edit that image. This does not generate a new image.</p>
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Describe the edit. Select an image layer, then choose an action."
+                    placeholder="Edit the selected image, e.g. make the lighting warmer and remove the background."
                     className="min-h-20 w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
                   />
                   <p className="text-xs text-pink-600">{selectedImageLayer ? `Selected: ${selectedImageLayer.name}` : "Select an image layer to use AI actions."}</p>
+                  <button type="button" onClick={() => void runAi("edit")} disabled={busyAction !== null || !selectedImageLayer || !aiPrompt.trim()} className="w-full rounded-lg bg-[#d63f7d] px-3 py-2 text-sm font-semibold text-white hover:bg-[#bd2868] disabled:opacity-50">
+                    {busyAction === "edit" ? "Editing..." : "Edit selected image"}
+                  </button>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-pink-600">Sample edits</p>
                   <div className="grid grid-cols-2 gap-2">
                     {IMAGE_AI_ACTIONS.map(([label, instruction]) => (
                       <button key={label} type="button" onClick={() => void runAi("edit", aiPrompt.trim() || instruction)} disabled={busyAction !== null || !selectedImageLayer} className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-left text-xs font-medium text-pink-700 hover:bg-pink-50 disabled:opacity-50">
