@@ -6,11 +6,7 @@ import { getBillingSnapshotForClerkUser } from "@/lib/billing";
 export const dynamic = "force-dynamic";
 
 const premiumFeatures = [
-  "Unlimited image generation; Free includes 10 image generations each calendar month.",
-  "AI-generated image placement in the whiteboard studio.",
-  "Existing personal studio, archive, and editor workflows under one paid plan.",
-  "Premium Suite with team workspaces, shared asset libraries, brand enforcement, and approval workflows.",
-  "Manage subscription, payment method, and cancellation from the Stripe billing portal.",
+  "Premium includes unlimited image generation.",
 ];
 
 export default async function BillingPage() {
@@ -29,7 +25,7 @@ export default async function BillingPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Billing</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#7a1f4f]">Simple billing: Free or Premium.</h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-pink-900/80">
-            Free includes 10 image generations each calendar month. Premium unlocks unlimited image generation and the full SmartArts-E workflow, including Premium Suite collaboration features.
+            Premium includes unlimited image generation.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700">
@@ -51,10 +47,7 @@ export default async function BillingPage() {
 
         <section className="rounded-3xl border border-pink-100 bg-white/88 p-6 shadow-[0_12px_30px_rgba(255,213,115,0.14)]">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Premium</p>
-          <h2 className="mt-3 text-2xl font-semibold text-[#7a1f4f]">Premium includes everything paid in one plan.</h2>
-          <p className="mt-3 text-sm leading-7 text-pink-900/80">
-            Free image generations reset at the start of each UTC calendar month. If you are already subscribed, use the billing portal to manage your subscription or cancel it at any time.
-          </p>
+          <h2 className="mt-3 text-2xl font-semibold text-[#7a1f4f]">Premium includes unlimited image generation.</h2>
           <ul className="mt-4 space-y-2 text-sm leading-7 text-pink-900/80">
             {premiumFeatures.map((feature) => (
               <li key={feature}>• {feature}</li>

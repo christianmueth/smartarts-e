@@ -2544,7 +2544,7 @@ export default function WorkspaceWhiteboard() {
                         Place note
                       </button>
                       <button type="button" onClick={() => void generateBoardImageFromPrompt()} disabled={imagePromptLoading} className="rounded-full border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-sm font-medium text-cyan-950 hover:bg-cyan-100 disabled:opacity-60">
-                        {imagePromptLoading ? "Generating image..." : "Generate premium image"}
+                        {imagePromptLoading ? "Generating image..." : "Generate image"}
                       </button>
                       <button type="button" onClick={addAnnotation} className="rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-50">
                         Save annotation
@@ -2556,7 +2556,7 @@ export default function WorkspaceWhiteboard() {
                       ) : null}
                     </div>
                     <p className="mt-3 text-xs leading-5 text-slate-500">
-                      Premium billing unlocks whiteboard image generation. Use it for moodboard fragments, composition studies, and quick visual references.
+                      Premium includes unlimited image generation.
                     </p>
                   </div>
 
