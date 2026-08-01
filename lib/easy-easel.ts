@@ -286,7 +286,7 @@ export async function editEditorAssetForClerkUser(input: {
   const reservation = await reserveImageGenerations(input.clerkUserId, count);
   try {
     const images = await editImages({
-      prompt,
+      prompt: buildEaselEditPrompt(prompt),
       sourceUrl: source.sourceUrl,
       count,
     });
@@ -767,6 +767,16 @@ function buildEaselGenerationPrompt(prompt: string) {
     "Make it suitable for placement on a digital canvas: clear subject separation, clean silhouette, centered composition, and simple readable forms.",
     "Avoid mockups, frames, UI chrome, watermarks, and decorative text unless the user explicitly asks for text.",
     "Prefer a plain or easily removable background so the result works well as an editable canvas element.",
+  ].join(" ");
+}
+
+function buildEaselEditPrompt(prompt: string) {
+  const cleanedPrompt = cleanText(prompt, 1600);
+  return [
+    "Edit the supplied source image; do not create a new image or a new scene from scratch.",
+    "Preserve the original subject, composition, camera angle, framing, proportions, and all visual details except where the user explicitly requests a change.",
+    "Make the smallest faithful transformation needed to satisfy the request.",
+    `Requested edit: ${cleanedPrompt}`,
   ].join(" ");
 }
 

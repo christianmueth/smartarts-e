@@ -1693,7 +1693,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI actions</summary>
                 <div className="mt-3 space-y-3">
-                  <p className="text-xs font-medium text-pink-700">Select an existing image layer, then give AI a command to edit that image. This does not generate a new image.</p>
                   <textarea
                     value={aiPrompt}
                     onChange={(event) => setAiPrompt(event.target.value)}
