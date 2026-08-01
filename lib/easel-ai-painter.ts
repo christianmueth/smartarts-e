@@ -1,9 +1,10 @@
-import type { EditorAssistAction, EditorPaintDetailLevel, EditorPaintPass } from "@/types/easy-easel";
+import type { EditorAssistAction, EditorPaintDetailLevel, EditorPaintPass, EditorPaintStyle } from "@/types/easy-easel";
 
 type ReferencePaintingInput = {
   imageUrl: string;
   canvas: { width: number; height: number };
   detailLevel: EditorPaintDetailLevel;
+  style: EditorPaintStyle;
 };
 
 type Pixel = { red: number; green: number; blue: number; alpha: number };
@@ -13,16 +14,13 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const bounds = fitReference(image.naturalWidth, image.naturalHeight, input.canvas.width, input.canvas.height);
   const sampling = getSampling(input.detailLevel, bounds.width, bounds.height);
   const source = document.createElement("canvas");
-  source.width = sampling.columns;
-  source.height = sampling.rows;
+  source.width = image.naturalWidth;
+  source.height = image.naturalHeight;
   const context = source.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("The reference could not be prepared for painting.");
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.filter = detailBlur(input.detailLevel);
   context.drawImage(image, 0, 0, source.width, source.height);
-    context.filter = "none";
-  const pixels = context.getImageData(0, 0, source.width, source.height).data;
+  const fullResolutionPixels = context.getImageData(0, 0, source.width, source.height).data;
+  const pixels = samplePlanningPixels(fullResolutionPixels, source.width, source.height, sampling);
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
@@ -32,9 +30,9 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
-  appendRefinementPass(actions, pixels, sampling, bounds);
+  appendRefinementPass(actions, pixels, sampling, bounds, refinementLimit(input.detailLevel));
 
-  return actions;
+  return applyPaintingStyle(actions, input.style);
 }
 
 function appendUnderpainting(
@@ -118,6 +116,36 @@ function getSampling(detailLevel: EditorPaintDetailLevel, width: number, height:
   };
 }
 
+function samplePlanningPixels(
+  sourcePixels: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  sampling: { columns: number; rows: number }
+) {
+  const plannedPixels = new Uint8ClampedArray(sampling.columns * sampling.rows * 4);
+  for (let y = 0; y < sampling.rows; y += 1) {
+    for (let x = 0; x < sampling.columns; x += 1) {
+      const left = Math.floor((x / sampling.columns) * sourceWidth);
+      const right = Math.max(left, Math.ceil(((x + 1) / sampling.columns) * sourceWidth) - 1);
+      const top = Math.floor((y / sampling.rows) * sourceHeight);
+      const bottom = Math.max(top, Math.ceil(((y + 1) / sampling.rows) * sourceHeight) - 1);
+      const samples = [
+        getPixel(sourcePixels, sourceWidth, left, top),
+        getPixel(sourcePixels, sourceWidth, right, top),
+        getPixel(sourcePixels, sourceWidth, left, bottom),
+        getPixel(sourcePixels, sourceWidth, right, bottom),
+        getPixel(sourcePixels, sourceWidth, Math.round((left + right) / 2), Math.round((top + bottom) / 2)),
+      ];
+      const index = (y * sampling.columns + x) * 4;
+      plannedPixels[index] = Math.round(samples.reduce((total, pixel) => total + pixel.red, 0) / samples.length);
+      plannedPixels[index + 1] = Math.round(samples.reduce((total, pixel) => total + pixel.green, 0) / samples.length);
+      plannedPixels[index + 2] = Math.round(samples.reduce((total, pixel) => total + pixel.blue, 0) / samples.length);
+      plannedPixels[index + 3] = Math.round(samples.reduce((total, pixel) => total + pixel.alpha, 0) / samples.length);
+    }
+  }
+  return plannedPixels;
+}
+
 function fitReference(sourceWidth: number, sourceHeight: number, canvasWidth: number, canvasHeight: number) {
   const scale = Math.min((canvasWidth * 0.82) / sourceWidth, (canvasHeight * 0.78) / sourceHeight);
   const width = Math.max(1, sourceWidth * scale);
@@ -173,10 +201,6 @@ function isEdge(data: Uint8ClampedArray, columns: number, rows: number, x: numbe
 
 function toColor(pixel: Pixel) {
   return `rgb(${pixel.red}, ${pixel.green}, ${pixel.blue})`;
-}
-
-function detailBlur(detailLevel: EditorPaintDetailLevel) {
-  return detailLevel === "study" ? "blur(1.8px)" : detailLevel === "refined" ? "blur(1.1px)" : "blur(0.6px)";
 }
 
 function getBackgroundColors(data: Uint8ClampedArray, columns: number, rows: number) {
@@ -291,13 +315,14 @@ function appendRefinementPass(
   actions: EditorAssistAction[],
   pixels: Uint8ClampedArray,
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
-  bounds: { x: number; y: number; width: number; height: number }
+  bounds: { x: number; y: number; width: number; height: number },
+  limit: number
 ) {
   const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
     for (let x = 1; x < sampling.columns - 1; x += 2) {
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
-      const score = refinementError(pixels, sampling.columns, sampling.rows, x, y);
+      const score = refinementPriority(pixels, sampling.columns, sampling.rows, x, y);
       if (score > 72) candidates.push({ x, y, score, pixel });
     }
   }
@@ -307,7 +332,7 @@ function appendRefinementPass(
   for (const candidate of candidates) {
     if (selected.some((item) => Math.abs(item.x - candidate.x) < 3 && Math.abs(item.y - candidate.y) < 3)) continue;
     selected.push(candidate);
-    if (selected.length === 220) break;
+    if (selected.length === limit) break;
   }
 
   for (const candidate of selected) {
@@ -411,4 +436,29 @@ function adaptiveBrushScale(pass: EditorPaintPass, contrast: number) {
 
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
   return { red: Math.round(pixel.red * factor), green: Math.round(pixel.green * factor), blue: Math.round(pixel.blue * factor), alpha: pixel.alpha };
+}
+
+function refinementPriority(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const focalBonus = isFocalDetail(data, columns, rows, x, y) ? 190 : 0;
+  const edgeBonus = isEdge(data, columns, rows, x, y) ? 85 : 0;
+  const centralBonus = x > columns * 0.2 && x < columns * 0.8 && y > rows * 0.12 && y < rows * 0.7 ? 24 : 0;
+  return refinementError(data, columns, rows, x, y) + focalBonus + edgeBonus + centralBonus;
+}
+
+function refinementLimit(detailLevel: EditorPaintDetailLevel) {
+  return detailLevel === "study" ? 100 : detailLevel === "refined" ? 220 : 340;
+}
+
+function applyPaintingStyle(actions: EditorAssistAction[], style: EditorPaintStyle) {
+  if (style === "realistic") return actions;
+  return actions.map((action) => {
+    if (action.tool !== "brush") return action;
+    if (style === "oil") {
+      return { ...action, strokeWidth: (action.strokeWidth || 1) * 1.18, opacity: Math.min(1, (action.opacity || 1) * 0.82) };
+    }
+    if (style === "watercolor") {
+      return { ...action, strokeWidth: (action.strokeWidth || 1) * 1.35, opacity: Math.min(0.72, (action.opacity || 1) * 0.58) };
+    }
+    return { ...action, strokeWidth: Math.max(1, (action.strokeWidth || 1) * 0.68), opacity: Math.min(0.78, (action.opacity || 1) * 0.72) };
+  });
 }

@@ -123,11 +123,14 @@ export type EditorPaintPass = "background" | "major-forms" | "shading" | "facial
 
 export type EditorPaintDetailLevel = "study" | "refined" | "high-detail";
 
+export type EditorPaintStyle = "realistic" | "oil" | "watercolor" | "sketch";
+
 export type EditorPaintSession = {
   id: string;
   referenceAssetId: string;
   referenceTitle: string;
   detailLevel: EditorPaintDetailLevel;
+  style?: EditorPaintStyle;
   actions: EditorAssistAction[];
   completedActionCount: number;
   status: "ready" | "painting" | "paused" | "stopped" | "complete";

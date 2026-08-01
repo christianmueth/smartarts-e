@@ -11,6 +11,7 @@ import type {
   EditorAssistPlan,
   EditorPaintDetailLevel,
   EditorPaintSession,
+  EditorPaintStyle,
   EditorAssistSelectedLayer,
   EditorAsset,
   EditorCanvasDocument,
@@ -58,6 +59,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
   const [aiPrompt, setAiPrompt] = useState("");
   const [paintReferenceAssetId, setPaintReferenceAssetId] = useState<string | null>(null);
   const [paintDetailLevel, setPaintDetailLevel] = useState<EditorPaintDetailLevel>("refined");
+  const [paintStyle, setPaintStyle] = useState<EditorPaintStyle>("realistic");
   const [activePaintSessionId, setActivePaintSessionId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<null | "upload" | "save" | "save-library" | "generate" | "edit" | "variation" | "export-png" | "export-jpeg">(null);
   const [cropRect, setCropRect] = useState<EditorCropRect | null>(null);
@@ -993,12 +995,14 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
         imageUrl: paintReferenceAsset.imageUrl,
         canvas: documentRef.current,
         detailLevel: paintDetailLevel,
+        style: paintStyle,
       });
       const session: EditorPaintSession = {
         id: createId("paint"),
         referenceAssetId: paintReferenceAsset.id,
         referenceTitle: paintReferenceAsset.title,
         detailLevel: paintDetailLevel,
+        style: paintStyle,
         actions,
         completedActionCount: 0,
         status: "ready",
@@ -1614,6 +1618,15 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                       <option value="study">Study</option>
                       <option value="refined">Refined</option>
                       <option value="high-detail">High detail</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    Painting style
+                    <select value={paintStyle} onChange={(event) => setPaintStyle(event.target.value as EditorPaintStyle)} className="mt-1 w-full rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm">
+                      <option value="realistic">Realistic</option>
+                      <option value="oil">Oil</option>
+                      <option value="watercolor">Watercolor</option>
+                      <option value="sketch">Sketch</option>
                     </select>
                   </label>
                   <div className="flex flex-wrap gap-2">
