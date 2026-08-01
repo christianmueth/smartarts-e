@@ -29,8 +29,9 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
   appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
   appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.8, 0.42, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.46, 0.58, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
   appendRefinementPass(actions, pixels, sampling, bounds, refinementLimit(input.detailLevel));
+  appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
 
   return applyPaintingStyle(actions, input.style);
 }
@@ -41,22 +42,27 @@ function appendUnderpainting(
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
   bounds: { x: number; y: number; width: number; height: number }
 ) {
-  const stride = 1;
+  const stride = 2;
   for (let y = 0; y < sampling.rows; y += stride) {
-    for (let x = 0; x < sampling.columns; x += stride) {
+    const rowOffset = (Math.floor(y / stride) % 2) * stride;
+    for (let x = rowOffset; x < sampling.columns; x += stride) {
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+      const jitter = strokeJitter(x, y, "background", unit * 2.1);
+      const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, "background");
+      const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
+      const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
+      const length = unit * 4.1;
+      const offsetX = Math.cos(direction) * length * 0.5;
+      const offsetY = Math.sin(direction) * length * 0.5;
       actions.push({
-        tool: "rect",
+        tool: "brush",
         pass: "background",
-        label: `Underpainting region ${actions.length + 1}`,
-        x: bounds.x + x * sampling.cellWidth,
-        y: bounds.y + y * sampling.cellHeight,
-        width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth * stride + 1),
-        height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight * stride + 1),
-        fill: toColor(quantizePixel(pixel, 16)),
-        stroke: "rgba(0,0,0,0)",
-        strokeWidth: 1,
-        opacity: 1,
+        label: `Underpainting stroke ${actions.length + 1}`,
+        points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+        stroke: toColor(perturbPixel(quantizePixel(pixel, 16), x, y, 8)),
+        strokeWidth: Math.max(2, unit * 2.8),
+        opacity: 0.32,
       });
     }
   }
@@ -82,13 +88,13 @@ function appendPass(
       }
 
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
-      const color = toColor(quantizePixel(pixel, unit <= 12 ? 16 : 24));
+        const color = toColor(perturbPixel(quantizePixel(pixel, unit <= 12 ? 16 : 24), x, y, pass === "background" ? 10 : 6));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
       const brushScale = adaptiveBrushScale(pass, localContrast(pixels, sampling.columns, sampling.rows, x, y));
       const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
-          const jitter = strokeJitter(x, y, pass, unit * 1.25);
-          const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
-          const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
+        const jitter = strokeJitter(x, y, pass, unit * 1.75);
+        const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
+        const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
       const offsetX = Math.cos(direction) * length * 0.5;
       const offsetY = Math.sin(direction) * length * 0.5;
       const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
@@ -99,8 +105,8 @@ function appendPass(
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale),
-        opacity,
+        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale * 1.32),
+        opacity: opacity * 0.74,
       });
     }
   }
@@ -235,7 +241,7 @@ function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number)
   const seed = x * 73856093 ^ y * 19349663 ^ pass.length * 83492791;
   const horizontal = ((seed >>> 5) % 1000) / 1000 - 0.5;
   const vertical = ((seed >>> 15) % 1000) / 1000 - 0.5;
-  return { x: horizontal * unit * 0.44, y: vertical * unit * 0.44 };
+  return { x: horizontal * unit * 0.62, y: vertical * unit * 0.62 };
 }
 
 function passLabel(pass: EditorPaintPass) {
@@ -290,8 +296,9 @@ function appendFaceFeaturePass(
   for (const feature of selected) {
     const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
     const direction = strokeDirection(pixels, sampling.columns, sampling.rows, feature.x, feature.y, "facial-features");
-    const centerX = bounds.x + (feature.x + 0.5) * sampling.cellWidth;
-    const centerY = bounds.y + (feature.y + 0.5) * sampling.cellHeight;
+    const jitter = strokeJitter(feature.x, feature.y, "facial-features", unit * 0.5);
+    const centerX = bounds.x + (feature.x + 0.5) * sampling.cellWidth + jitter.x;
+    const centerY = bounds.y + (feature.y + 0.5) * sampling.cellHeight + jitter.y;
     const length = unit * 1.2;
     const offsetX = Math.cos(direction) * length * 0.5;
     const offsetY = Math.sin(direction) * length * 0.5;
@@ -302,7 +309,7 @@ function appendFaceFeaturePass(
       points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
       stroke: toColor(quantizePixel(feature.pixel, 16)),
       strokeWidth: Math.max(1.5, unit * 0.42),
-      opacity: 0.94,
+      opacity: 0.68,
     });
   }
 
@@ -340,8 +347,9 @@ function appendRefinementPass(
     const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
     const brushScale = adaptiveBrushScale("final-detail", localContrast(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y));
     const length = unit * 1.05 * brushScale;
-    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
-    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const jitter = strokeJitter(candidate.x, candidate.y, "final-detail", unit * 0.65);
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth + jitter.x;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight + jitter.y;
     const offsetX = Math.cos(direction) * length * 0.5;
     const offsetY = Math.sin(direction) * length * 0.5;
     actions.push({
@@ -351,7 +359,7 @@ function appendRefinementPass(
       points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
       stroke: toColor(quantizePixel(candidate.pixel, 12)),
       strokeWidth: Math.max(1, unit * 0.38 * brushScale),
-      opacity: 0.88,
+      opacity: 0.6,
     });
   }
 }
@@ -461,4 +469,51 @@ function applyPaintingStyle(actions: EditorAssistAction[], style: EditorPaintSty
     }
     return { ...action, strokeWidth: Math.max(1, (action.strokeWidth || 1) * 0.68), opacity: Math.min(0.78, (action.opacity || 1) * 0.72) };
   });
+}
+
+function appendGlazePass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  limit: number
+) {
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (let y = 1; y < sampling.rows - 1; y += 2) {
+    for (let x = 1; x < sampling.columns - 1; x += 2) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      candidates.push({ x, y, score: refinementPriority(pixels, sampling.columns, sampling.rows, x, y), pixel });
+    }
+  }
+  candidates.sort((first, second) => second.score - first.score);
+  for (const candidate of candidates.slice(0, limit)) {
+    const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
+    const jitter = strokeJitter(candidate.x, candidate.y, "final-detail", unit * 1.1);
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth + jitter.x;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight + jitter.y;
+    const length = unit * 1.8;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "final-detail",
+      label: "Blending glaze",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(perturbPixel(quantizePixel(candidate.pixel, 12), candidate.x, candidate.y, 4)),
+      strokeWidth: Math.max(1, unit * 0.45),
+      opacity: 0.18,
+    });
+  }
+}
+
+function glazeLimit(detailLevel: EditorPaintDetailLevel) {
+  return detailLevel === "study" ? 140 : detailLevel === "refined" ? 360 : 720;
+}
+
+function perturbPixel(pixel: Pixel, x: number, y: number, range: number): Pixel {
+  const seed = x * 83492791 ^ y * 2654435761;
+  const adjustment = ((seed >>> 10) % (range * 2 + 1)) - range;
+  const clamp = (value: number) => Math.max(0, Math.min(255, value + adjustment));
+  return { red: clamp(pixel.red), green: clamp(pixel.green), blue: clamp(pixel.blue), alpha: pixel.alpha };
 }
