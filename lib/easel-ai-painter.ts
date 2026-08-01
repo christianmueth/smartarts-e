@@ -79,6 +79,7 @@ function appendUnderpainting(
     const rowOffset = (Math.floor(y / stride) % 2) * stride;
     for (let x = rowOffset; x < sampling.columns; x += stride) {
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      if (isPainterlyFinishedRegion(pixels, sampling.columns, sampling.rows, x, y) && !retainSmoothCoverage(x, y, 5)) continue;
       const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
       const jitter = strokeJitter(x, y, "background", unit * 2.1);
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, "background");
@@ -119,26 +120,30 @@ function appendPass(
       if (!include(pixel, x, y) || pixel.alpha < 32) {
         continue;
       }
+      if (isPainterlyStyle(style) && pass !== "final-detail" && isPainterlyFinishedRegion(pixels, sampling.columns, sampling.rows, x, y) && !retainSmoothCoverage(x, y, 4)) {
+        continue;
+      }
 
-          const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+      const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
       const color = toColor(style === "realistic" ? quantizePixel(pixel, unit <= 12 ? 16 : 24) : perturbPixel(quantizePixel(pixel, unit <= 12 ? 16 : 24), x, y, pass === "background" ? 10 : 6));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
       const brushScale = adaptiveBrushScale(pass, localContrast(pixels, sampling.columns, sampling.rows, x, y));
-      const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
+      const profile = painterlyBrushProfile(style, pass, x, y);
+      const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7) * profile.lengthScale;
       const jitter = strokeJitter(x, y, pass, unit * (style === "realistic" ? 1.25 : 1.75), style === "realistic" ? 0.44 : 0.62);
       const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
       const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
       const offsetX = Math.cos(direction) * length * 0.5;
       const offsetY = Math.sin(direction) * length * 0.5;
-      const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
-      const curveY = Math.sin(direction + Math.PI / 2) * length * 0.08;
+      const curveX = Math.cos(direction + Math.PI / 2) * length * profile.curve;
+      const curveY = Math.sin(direction + Math.PI / 2) * length * profile.curve;
       actions.push({
         tool: "brush",
         pass,
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale * (style === "realistic" ? 1 : 1.32)),
+        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale * (style === "realistic" ? 1 : 1.32) * profile.widthScale),
         opacity: style === "realistic" ? opacity : opacity * 0.74,
       });
     }
@@ -224,12 +229,13 @@ function appendPainterlyReconstruction(
   const candidates: Array<{ x: number; y: number; score: number }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
     for (let x = 1; x < sampling.columns - 1; x += 2) {
+      if (isPainterlyFinishedRegion(pixels, sampling.columns, sampling.rows, x, y) && !isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isFocalDetail(pixels, sampling.columns, sampling.rows, x, y)) continue;
       candidates.push({ x, y, score: reconstructionPriority(pixels, sampling.columns, sampling.rows, x, y) });
     }
   }
   candidates.sort((first, second) => second.score - first.score);
 
-  const structureLimit = style === "oil" ? 360 : 280;
+  const structureLimit = style === "oil" ? 300 : 230;
   for (const candidate of candidates.slice(0, structureLimit)) {
     const compositionColor = samplePyramid(pyramid.composition, candidate.x, candidate.y, sampling.columns, sampling.rows);
     const formColor = samplePyramid(pyramid.forms, candidate.x, candidate.y, sampling.columns, sampling.rows);
@@ -575,6 +581,28 @@ function adaptiveBrushScale(pass: EditorPaintPass, contrast: number) {
   if (pass === "major-forms") return contrast > 100 ? 0.76 : contrast > 58 ? 0.92 : 1.12;
   if (pass === "shading") return contrast > 76 ? 0.84 : 1.04;
   return contrast > 100 ? 0.72 : 0.9;
+}
+
+function isPainterlyFinishedRegion(data: Uint8ClampedArray, columns: number, rows: number, x: number, y: number) {
+  const contrast = localContrast(data, columns, rows, x, y);
+  const error = refinementError(data, columns, rows, x, y);
+  return contrast < 42 && error < 48 && !isFocalDetail(data, columns, rows, x, y);
+}
+
+function retainSmoothCoverage(x: number, y: number, interval: number) {
+  return Math.abs((x * 37 + y * 61) % interval) === 0;
+}
+
+function painterlyBrushProfile(style: EditorPaintStyle, pass: EditorPaintPass, x: number, y: number) {
+  if (!isPainterlyStyle(style)) return { lengthScale: 1, widthScale: 1, curve: 0.08 };
+  const seed = Math.abs((x * 92821 + y * 68917 + pass.length * 167) % 100);
+  if (pass === "background") {
+    return { lengthScale: 1.12 + (seed % 3) * 0.12, widthScale: 1.08 + (seed % 2) * 0.18, curve: 0.1 + (seed % 3) * 0.025 };
+  }
+  if (pass === "major-forms" || pass === "shading") {
+    return { lengthScale: 0.88 + (seed % 4) * 0.12, widthScale: 0.78 + (seed % 3) * 0.16, curve: 0.05 + (seed % 4) * 0.025 };
+  }
+  return { lengthScale: 0.86 + (seed % 3) * 0.08, widthScale: 0.72 + (seed % 3) * 0.1, curve: 0.02 + (seed % 2) * 0.02 };
 }
 
 function darkenPixel(pixel: Pixel, factor: number): Pixel {
