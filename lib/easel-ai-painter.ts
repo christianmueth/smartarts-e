@@ -35,7 +35,11 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   appendFaceFeaturePass(actions, pixels, sampling, bounds, input.style);
   appendPass(actions, "final-detail", pixels, sampling, bounds, 3, input.style === "realistic" ? 0.8 : 0.46, input.style === "realistic" ? 0.42 : 0.58, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
   appendRefinementPass(actions, pixels, sampling, bounds, refinementLimit(input.detailLevel), input.style);
-  if (input.style !== "realistic") appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
+  if (isPainterlyStyle(input.style)) {
+    appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
+    appendEdgeSharpeningPass(actions, pixels, sampling, bounds, input.style);
+    appendFeatureLockPass(actions, pixels, sampling, bounds, input.detailLevel, input.style);
+  }
 
   return applyPaintingStyle(actions, input.style);
 }
@@ -458,7 +462,6 @@ function appendRefinementPass(
   const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
     for (let x = 1; x < sampling.columns - 1; x += 2) {
-      if (isEdge(pixels, sampling.columns, sampling.rows, x, y) || isFocalDetail(pixels, sampling.columns, sampling.rows, x, y)) continue;
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
       const score = refinementPriority(pixels, sampling.columns, sampling.rows, x, y);
       if (score > 72) candidates.push({ x, y, score, pixel });
@@ -612,6 +615,7 @@ function appendGlazePass(
   const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
     for (let x = 1; x < sampling.columns - 1; x += 2) {
+      if (isEdge(pixels, sampling.columns, sampling.rows, x, y) || isFocalDetail(pixels, sampling.columns, sampling.rows, x, y)) continue;
       const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
       candidates.push({ x, y, score: refinementPriority(pixels, sampling.columns, sampling.rows, x, y), pixel });
     }
@@ -640,6 +644,85 @@ function appendGlazePass(
 
 function glazeLimit(detailLevel: EditorPaintDetailLevel) {
   return detailLevel === "study" ? 140 : detailLevel === "refined" ? 360 : 720;
+}
+
+function appendEdgeSharpeningPass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  style: EditorPaintStyle
+) {
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (let y = 1; y < sampling.rows - 1; y += 1) {
+    for (let x = 1; x < sampling.columns - 1; x += 1) {
+      if (!isEdge(pixels, sampling.columns, sampling.rows, x, y)) continue;
+      candidates.push({ x, y, score: reconstructionPriority(pixels, sampling.columns, sampling.rows, x, y), pixel: averagePixel(pixels, sampling.columns, sampling.rows, x, y) });
+    }
+  }
+  candidates.sort((first, second) => second.score - first.score);
+  const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+  for (const candidate of candidates.slice(0, style === "oil" ? 280 : 220)) {
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const length = unit * 0.86;
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "final-detail",
+      label: "Edge sharpening",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(quantizePixel(candidate.pixel, 12)),
+      strokeWidth: Math.max(1, unit * 0.22),
+      opacity: style === "oil" ? 0.88 : 0.76,
+    });
+  }
+}
+
+function appendFeatureLockPass(
+  actions: EditorAssistAction[],
+  pixels: Uint8ClampedArray,
+  sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
+  bounds: { x: number; y: number; width: number; height: number },
+  detailLevel: EditorPaintDetailLevel,
+  style: EditorPaintStyle
+) {
+  const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  for (let y = Math.floor(sampling.rows * 0.12); y < Math.ceil(sampling.rows * 0.68); y += 1) {
+    for (let x = Math.floor(sampling.columns * 0.18); x < Math.ceil(sampling.columns * 0.82); x += 1) {
+      const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+      const score = localContrast(pixels, sampling.columns, sampling.rows, x, y) + (isFocalDetail(pixels, sampling.columns, sampling.rows, x, y) ? 260 : 0);
+      if (score > 90 && brightness(pixel) < 180) candidates.push({ x, y, score, pixel });
+    }
+  }
+  candidates.sort((first, second) => second.score - first.score);
+  const selected: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
+  const limit = detailLevel === "study" ? 80 : detailLevel === "refined" ? 180 : 300;
+  for (const candidate of candidates) {
+    if (selected.some((item) => Math.abs(item.x - candidate.x) < 2 && Math.abs(item.y - candidate.y) < 2)) continue;
+    selected.push(candidate);
+    if (selected.length === limit) break;
+  }
+  const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
+  for (const candidate of selected) {
+    const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "facial-features");
+    const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth;
+    const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight;
+    const length = Math.max(2, unit * 0.42);
+    const offsetX = Math.cos(direction) * length * 0.5;
+    const offsetY = Math.sin(direction) * length * 0.5;
+    actions.push({
+      tool: "brush",
+      pass: "facial-features",
+      label: "Locked feature detail",
+      points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
+      stroke: toColor(darkenPixel(quantizePixel(candidate.pixel, 8), 0.72)),
+      strokeWidth: Math.max(1, unit * 0.16),
+      opacity: style === "oil" ? 0.92 : 0.82,
+    });
+  }
 }
 
 function perturbPixel(pixel: Pixel, x: number, y: number, range: number): Pixel {
