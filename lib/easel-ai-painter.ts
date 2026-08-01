@@ -24,14 +24,14 @@ export async function buildReferencePaintingPlan(input: ReferencePaintingInput):
   const backgroundColors = getBackgroundColors(pixels, sampling.columns, sampling.rows);
   const actions: EditorAssistAction[] = [];
 
-  appendUnderpainting(actions, pixels, sampling, bounds);
-  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
-  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
-  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
-  appendFaceFeaturePass(actions, pixels, sampling, bounds);
-  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, 0.46, 0.58, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
-  appendRefinementPass(actions, pixels, sampling, bounds, refinementLimit(input.detailLevel));
-  appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
+  appendUnderpainting(actions, pixels, sampling, bounds, input.style);
+  appendPass(actions, "background", pixels, sampling, bounds, 4, 0.26, 0.9, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "major-forms", pixels, sampling, bounds, 3, 0.34, 0.74, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y) && !isBackgroundPixel(sample(pixels, sampling.columns, sampling.rows, x, y), backgroundColors));
+  appendPass(actions, "shading", pixels, sampling, bounds, 4, 0.32, 0.58, input.style, (_pixel, x, y) => isShadow(pixels, sampling.columns, sampling.rows, x, y));
+  appendFaceFeaturePass(actions, pixels, sampling, bounds, input.style);
+  appendPass(actions, "final-detail", pixels, sampling, bounds, 3, input.style === "realistic" ? 0.8 : 0.46, input.style === "realistic" ? 0.42 : 0.58, input.style, (_pixel, x, y) => isEdge(pixels, sampling.columns, sampling.rows, x, y));
+  appendRefinementPass(actions, pixels, sampling, bounds, refinementLimit(input.detailLevel), input.style);
+  if (input.style !== "realistic") appendGlazePass(actions, pixels, sampling, bounds, glazeLimit(input.detailLevel));
 
   return applyPaintingStyle(actions, input.style);
 }
@@ -40,8 +40,31 @@ function appendUnderpainting(
   actions: EditorAssistAction[],
   pixels: Uint8ClampedArray,
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
-  bounds: { x: number; y: number; width: number; height: number }
+  bounds: { x: number; y: number; width: number; height: number },
+  style: EditorPaintStyle
 ) {
+  if (style === "realistic") {
+    for (let y = 0; y < sampling.rows; y += 1) {
+      for (let x = 0; x < sampling.columns; x += 1) {
+        const pixel = averagePixel(pixels, sampling.columns, sampling.rows, x, y);
+        actions.push({
+          tool: "rect",
+          pass: "background",
+          label: `Underpainting region ${actions.length + 1}`,
+          x: bounds.x + x * sampling.cellWidth,
+          y: bounds.y + y * sampling.cellHeight,
+          width: Math.min(bounds.width - x * sampling.cellWidth, sampling.cellWidth + 1),
+          height: Math.min(bounds.height - y * sampling.cellHeight, sampling.cellHeight + 1),
+          fill: toColor(quantizePixel(pixel, 16)),
+          stroke: "rgba(0,0,0,0)",
+          strokeWidth: 1,
+          opacity: 1,
+        });
+      }
+    }
+    return;
+  }
+
   const stride = 2;
   for (let y = 0; y < sampling.rows; y += stride) {
     const rowOffset = (Math.floor(y / stride) % 2) * stride;
@@ -77,6 +100,7 @@ function appendPass(
   stride: number,
   opacity: number,
   widthMultiplier: number,
+  style: EditorPaintStyle,
   include: (pixel: Pixel, x: number, y: number) => boolean
 ) {
   for (let y = 0; y < sampling.rows; y += stride) {
@@ -88,13 +112,13 @@ function appendPass(
       }
 
           const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
-        const color = toColor(perturbPixel(quantizePixel(pixel, unit <= 12 ? 16 : 24), x, y, pass === "background" ? 10 : 6));
+      const color = toColor(style === "realistic" ? quantizePixel(pixel, unit <= 12 ? 16 : 24) : perturbPixel(quantizePixel(pixel, unit <= 12 ? 16 : 24), x, y, pass === "background" ? 10 : 6));
       const direction = strokeDirection(pixels, sampling.columns, sampling.rows, x, y, pass);
       const brushScale = adaptiveBrushScale(pass, localContrast(pixels, sampling.columns, sampling.rows, x, y));
       const length = unit * (pass === "background" ? 3.2 : pass === "major-forms" ? 2.55 : pass === "final-detail" || pass === "facial-features" ? 1.15 : 1.7);
-        const jitter = strokeJitter(x, y, pass, unit * 1.75);
-        const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
-        const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
+      const jitter = strokeJitter(x, y, pass, unit * (style === "realistic" ? 1.25 : 1.75), style === "realistic" ? 0.44 : 0.62);
+      const centerX = bounds.x + (x + 0.5) * sampling.cellWidth + jitter.x;
+      const centerY = bounds.y + (y + 0.5) * sampling.cellHeight + jitter.y;
       const offsetX = Math.cos(direction) * length * 0.5;
       const offsetY = Math.sin(direction) * length * 0.5;
       const curveX = Math.cos(direction + Math.PI / 2) * length * 0.08;
@@ -105,8 +129,8 @@ function appendPass(
         label: `${passLabel(pass)} stroke ${actions.length + 1}`,
         points: [centerX - offsetX, centerY - offsetY, centerX + curveX, centerY + curveY, centerX + offsetX, centerY + offsetY],
         stroke: color,
-        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale * 1.32),
-        opacity: opacity * 0.74,
+        strokeWidth: Math.max(1, unit * widthMultiplier * brushScale * (style === "realistic" ? 1 : 1.32)),
+        opacity: style === "realistic" ? opacity : opacity * 0.74,
       });
     }
   }
@@ -237,11 +261,11 @@ function averagePixel(data: Uint8ClampedArray, columns: number, rows: number, x:
   return { red: Math.round(red / count), green: Math.round(green / count), blue: Math.round(blue / count), alpha: Math.round(alpha / count) };
 }
 
-function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number) {
+function strokeJitter(x: number, y: number, pass: EditorPaintPass, unit: number, amplitude = 0.62) {
   const seed = x * 73856093 ^ y * 19349663 ^ pass.length * 83492791;
   const horizontal = ((seed >>> 5) % 1000) / 1000 - 0.5;
   const vertical = ((seed >>> 15) % 1000) / 1000 - 0.5;
-  return { x: horizontal * unit * 0.62, y: vertical * unit * 0.62 };
+  return { x: horizontal * unit * amplitude, y: vertical * unit * amplitude };
 }
 
 function passLabel(pass: EditorPaintPass) {
@@ -269,7 +293,8 @@ function appendFaceFeaturePass(
   actions: EditorAssistAction[],
   pixels: Uint8ClampedArray,
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
-  bounds: { x: number; y: number; width: number; height: number }
+  bounds: { x: number; y: number; width: number; height: number },
+  style: EditorPaintStyle
 ) {
   const face = {
     left: Math.floor(sampling.columns * 0.25),
@@ -296,7 +321,7 @@ function appendFaceFeaturePass(
   for (const feature of selected) {
     const unit = Math.min(sampling.cellWidth, sampling.cellHeight);
     const direction = strokeDirection(pixels, sampling.columns, sampling.rows, feature.x, feature.y, "facial-features");
-    const jitter = strokeJitter(feature.x, feature.y, "facial-features", unit * 0.5);
+    const jitter = strokeJitter(feature.x, feature.y, "facial-features", style === "realistic" ? 0 : unit * 0.5);
     const centerX = bounds.x + (feature.x + 0.5) * sampling.cellWidth + jitter.x;
     const centerY = bounds.y + (feature.y + 0.5) * sampling.cellHeight + jitter.y;
     const length = unit * 1.2;
@@ -309,7 +334,7 @@ function appendFaceFeaturePass(
       points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
       stroke: toColor(quantizePixel(feature.pixel, 16)),
       strokeWidth: Math.max(1.5, unit * 0.42),
-      opacity: 0.68,
+      opacity: style === "realistic" ? 0.94 : 0.68,
     });
   }
 
@@ -323,7 +348,8 @@ function appendRefinementPass(
   pixels: Uint8ClampedArray,
   sampling: { columns: number; rows: number; cellWidth: number; cellHeight: number },
   bounds: { x: number; y: number; width: number; height: number },
-  limit: number
+  limit: number,
+  style: EditorPaintStyle
 ) {
   const candidates: Array<{ x: number; y: number; score: number; pixel: Pixel }> = [];
   for (let y = 1; y < sampling.rows - 1; y += 2) {
@@ -347,7 +373,7 @@ function appendRefinementPass(
     const direction = strokeDirection(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y, "final-detail");
     const brushScale = adaptiveBrushScale("final-detail", localContrast(pixels, sampling.columns, sampling.rows, candidate.x, candidate.y));
     const length = unit * 1.05 * brushScale;
-    const jitter = strokeJitter(candidate.x, candidate.y, "final-detail", unit * 0.65);
+    const jitter = strokeJitter(candidate.x, candidate.y, "final-detail", style === "realistic" ? 0 : unit * 0.65);
     const centerX = bounds.x + (candidate.x + 0.5) * sampling.cellWidth + jitter.x;
     const centerY = bounds.y + (candidate.y + 0.5) * sampling.cellHeight + jitter.y;
     const offsetX = Math.cos(direction) * length * 0.5;
@@ -359,7 +385,7 @@ function appendRefinementPass(
       points: [centerX - offsetX, centerY - offsetY, centerX, centerY, centerX + offsetX, centerY + offsetY],
       stroke: toColor(quantizePixel(candidate.pixel, 12)),
       strokeWidth: Math.max(1, unit * 0.38 * brushScale),
-      opacity: 0.6,
+      opacity: style === "realistic" ? 0.88 : 0.6,
     });
   }
 }
