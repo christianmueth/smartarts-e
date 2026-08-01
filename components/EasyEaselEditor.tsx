@@ -1596,8 +1596,10 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                     <input type="file" accept="image/*" className="hidden" onChange={(event) => void uploadImage(event.target.files?.[0] || null)} />
                   </label>
                   <AssetShelf title="Uploads" assets={groupedAssets.upload} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
-                  <AssetShelf title="Generated" assets={groupedAssets.generated} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
-                  <AssetShelf title="Edited" assets={groupedAssets.edited} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} />
+                  <div className="max-h-[min(44vh,30rem)] space-y-3 overflow-y-auto overscroll-contain pr-1">
+                    <AssetShelf title="Generated" assets={groupedAssets.generated} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} scrollable={false} />
+                    <AssetShelf title="Edited" assets={groupedAssets.edited} onInsert={insertAssetAsLayer} onChooseReference={setPaintReferenceAssetId} selectedReferenceId={paintReferenceAssetId} scrollable={false} />
+                  </div>
                 </div>
               </details>
 
@@ -1838,11 +1840,11 @@ function CanvasImage({ layer }: { layer: EditorImageLayer }) {
   );
 }
 
-function AssetShelf({ title, assets, onInsert, onChooseReference, selectedReferenceId }: { title: string; assets: EditorAsset[]; onInsert: (asset: EditorAsset) => void; onChooseReference: (assetId: string) => void; selectedReferenceId: string | null }) {
+function AssetShelf({ title, assets, onInsert, onChooseReference, selectedReferenceId, scrollable = true }: { title: string; assets: EditorAsset[]; onInsert: (asset: EditorAsset) => void; onChooseReference: (assetId: string) => void; selectedReferenceId: string | null; scrollable?: boolean }) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-500">{title}</p>
-      <div className="mt-2 max-h-[24rem] space-y-2 overflow-y-auto pr-1">
+      <div className={scrollable ? "mt-2 max-h-[24rem] space-y-2 overflow-y-auto pr-1" : "mt-2 space-y-2"}>
         {assets.length ? assets.map((asset) => (
           <div key={asset.id} className={selectedReferenceId === asset.id ? "flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-400 bg-pink-50 p-2" : "flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[1rem] border border-pink-100 bg-white p-2"}>
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[radial-gradient(circle_at_top,_rgba(255,236,171,0.9),_rgba(255,246,250,0.95)_58%,_rgba(255,255,255,0.98)_100%)] p-1.5">
