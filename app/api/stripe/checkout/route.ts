@@ -3,7 +3,6 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import {
   getBillingSnapshotForClerkUser,
   getOrCreateStripeCustomerForClerkUser,
-  hasPremiumAccessFromValues,
 } from "@/lib/billing";
 import { getAppUrl, getStripe, getStripePremiumPriceId } from "@/lib/stripe";
 
@@ -18,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const billing = await getBillingSnapshotForClerkUser(clerkUserId);
-    if (hasPremiumAccessFromValues(billing.premiumStatus, billing.premiumAccessUntil)) {
+    if (billing.isPremium) {
       return NextResponse.json({ ok: false, error: "Premium is already active for this account." }, { status: 409 });
     }
 

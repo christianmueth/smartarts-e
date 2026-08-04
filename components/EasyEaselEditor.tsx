@@ -1836,9 +1836,10 @@ function CanvasImage({ layer }: { layer: EditorImageLayer }) {
   useEffect(() => {
     const node = imageRef.current;
     if (!node || !image) return;
+    node.clearCache();
     node.cache();
     node.getLayer()?.batchDraw();
-  }, [image, layer.brightness, layer.contrast]);
+  }, [image, layer.brightness, layer.contrast, layer.width, layer.height]);
 
   return (
     <KonvaImage

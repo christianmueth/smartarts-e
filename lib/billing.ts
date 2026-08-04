@@ -1,10 +1,15 @@
 import type Stripe from "stripe";
 import { isMissingTableOrColumnError, prisma, safeUpsertUser } from "@/lib/db";
 import { getStripe } from "@/lib/stripe";
-
-const PREMIUM_ACTIVE_STATUSES = new Set(["active", "trialing"]);
+import {
+  getPremiumEntitlements,
+  hasGooglePlayPremiumAccessFromValues,
+  hasStripePremiumAccessFromValues,
+} from "@/lib/premium-entitlements";
 
 export type BillingTier = "free" | "premium";
+export { getPremiumEntitlements, hasGooglePlayPremiumAccessFromValues, hasStripePremiumAccessFromValues } from "@/lib/premium-entitlements";
+export type { PremiumEntitlementInput } from "@/lib/premium-entitlements";
 
 export function resolveBillingTier(_priceId: string | null | undefined, hasPaidAccess: boolean): BillingTier {
   if (!hasPaidAccess) {
@@ -15,17 +20,7 @@ export function resolveBillingTier(_priceId: string | null | undefined, hasPaidA
 }
 
 export function hasPremiumAccessFromValues(status: string | null | undefined, accessUntil: Date | string | null | undefined) {
-  const normalizedStatus = String(status || "").trim().toLowerCase();
-  if (PREMIUM_ACTIVE_STATUSES.has(normalizedStatus)) {
-    return true;
-  }
-
-  if (!accessUntil) {
-    return false;
-  }
-
-  const end = accessUntil instanceof Date ? accessUntil : new Date(accessUntil);
-  return Number.isFinite(end.getTime()) && end.getTime() > Date.now();
+  return hasStripePremiumAccessFromValues(status, accessUntil);
 }
 
 export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
@@ -35,6 +30,10 @@ export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
     stripePriceId: string | null;
+    googlePlayProductId: string | null;
+    googlePlaySubscriptionStatus: string | null;
+    googlePlaySubscriptionEnd: Date | null;
+    googlePlayAutoRenewing: boolean;
   } | null = null;
 
   try {
@@ -46,20 +45,55 @@ export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
         stripeCustomerId: true,
         stripeSubscriptionId: true,
         stripePriceId: true,
+        googlePlayProductId: true,
+        googlePlaySubscriptionStatus: true,
+        googlePlaySubscriptionEnd: true,
+        googlePlayAutoRenewing: true,
       },
     });
   } catch (error) {
-    if (!isMissingTableOrColumnError(error, ["User", "premiumStatus", "premiumAccessUntil", "stripeCustomerId", "stripeSubscriptionId", "stripePriceId"])) {
+    if (!isMissingTableOrColumnError(error, ["User", "premiumStatus", "premiumAccessUntil", "stripeCustomerId", "stripeSubscriptionId", "stripePriceId", "googlePlayProductId", "googlePlaySubscriptionStatus", "googlePlaySubscriptionEnd", "googlePlayAutoRenewing"])) {
       throw error;
     }
-    console.warn("[billing] Billing fields unavailable; returning free-tier snapshot");
+    try {
+      const legacyUser = await prisma.user.findUnique({
+        where: { clerkUserId },
+        select: {
+          premiumStatus: true,
+          premiumAccessUntil: true,
+          stripeCustomerId: true,
+          stripeSubscriptionId: true,
+          stripePriceId: true,
+        },
+      });
+      user = legacyUser && {
+        ...legacyUser,
+        googlePlayProductId: null,
+        googlePlaySubscriptionStatus: null,
+        googlePlaySubscriptionEnd: null,
+        googlePlayAutoRenewing: false,
+      };
+      console.warn("[billing] Google Play fields unavailable; using existing Stripe billing fields");
+    } catch (legacyError) {
+      if (!isMissingTableOrColumnError(legacyError, ["User", "premiumStatus", "premiumAccessUntil", "stripeCustomerId", "stripeSubscriptionId", "stripePriceId"])) {
+        throw legacyError;
+      }
+      console.warn("[billing] Billing fields unavailable; returning free-tier snapshot");
+    }
   }
 
   const premiumStatus = user?.premiumStatus ?? null;
   const premiumAccessUntil = user?.premiumAccessUntil ?? null;
   const stripePriceId = user?.stripePriceId ?? null;
-  const isPremium = hasPremiumAccessFromValues(premiumStatus, premiumAccessUntil);
-  const billingTier = resolveBillingTier(stripePriceId, isPremium);
+  const googlePlaySubscriptionStatus = user?.googlePlaySubscriptionStatus ?? null;
+  const googlePlaySubscriptionEnd = user?.googlePlaySubscriptionEnd ?? null;
+  const entitlements = getPremiumEntitlements({
+    premiumStatus,
+    premiumAccessUntil,
+    googlePlaySubscriptionStatus,
+    googlePlaySubscriptionEnd,
+  });
+  const billingTier = resolveBillingTier(stripePriceId, entitlements.isPremium);
 
   return {
     premiumStatus,
@@ -67,7 +101,11 @@ export async function getBillingSnapshotForClerkUser(clerkUserId: string) {
     stripeCustomerId: user?.stripeCustomerId ?? null,
     stripeSubscriptionId: user?.stripeSubscriptionId ?? null,
     stripePriceId,
-    isPremium,
+    googlePlayProductId: user?.googlePlayProductId ?? null,
+    googlePlaySubscriptionStatus,
+    googlePlaySubscriptionEnd,
+    googlePlayAutoRenewing: user?.googlePlayAutoRenewing ?? false,
+    ...entitlements,
     billingTier,
   };
 }

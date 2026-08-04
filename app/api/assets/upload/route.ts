@@ -25,6 +25,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Only image uploads are supported." }, { status: 400 });
     }
 
+    if (!process.env.BLOB_READ_WRITE_TOKEN?.trim()) {
+      return NextResponse.json(
+        { ok: false, error: "Image uploads are not configured. Set BLOB_READ_WRITE_TOKEN on the server and redeploy." },
+        { status: 503 }
+      );
+    }
+
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
     const pathname = `uploads/easy-easel/${Date.now()}-${safeName}`;
     const blob = await put(pathname, file, {

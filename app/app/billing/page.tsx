@@ -40,6 +40,12 @@ export default async function BillingPage() {
               </span>
             ) : null}
           </div>
+          {billing.googlePlayActive ? (
+            <p className="mt-4 text-sm font-medium text-pink-900">Premium is active through Google Play.</p>
+          ) : null}
+          {billing.source === "both" ? (
+            <p className="mt-4 text-sm font-medium text-amber-900">You appear to have active subscriptions through both Stripe and Google Play. You may want to cancel one to avoid duplicate billing.</p>
+          ) : null}
           <div className="mt-6">
             <BillingActions isPremium={billing.isPremium} hasBillingProfile={Boolean(billing.stripeCustomerId)} />
           </div>

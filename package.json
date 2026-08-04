@@ -7,6 +7,7 @@
     "dev:3001": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
+    "test:billing": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\",\\\"moduleResolution\\\":\\\"Node\\\"}\" lib/premium-entitlements.test.ts",
     "postinstall": "prisma generate",
     "reasoning:export:recovery": "node scripts/export-tutoring-recovery-dataset.mjs",
     "reasoning:export:shadow": "node scripts/export-adaptive-shadow-dataset.mjs",
@@ -25,6 +26,8 @@
     "flashcards:contract:json": "node scripts/flashcards-llm-contract-test.mjs --mode json"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@clerk/nextjs": "^6.31.9",
     "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg/core": "^0.12.6",
@@ -59,6 +62,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.24",

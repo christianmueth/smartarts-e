@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { isCapacitorAndroid } from "@/lib/capacitor-platform";
 
 type BillingActionsProps = {
   isPremium: boolean;
@@ -19,6 +20,7 @@ async function safeJson(response: Response) {
 
 export default function BillingActions({ isPremium, hasBillingProfile }: BillingActionsProps) {
   const [loadingAction, setLoadingAction] = useState<"checkout" | "portal" | null>(null);
+  const isAndroid = isCapacitorAndroid();
 
   async function startCheckout() {
     setLoadingAction("checkout");
@@ -55,7 +57,7 @@ export default function BillingActions({ isPremium, hasBillingProfile }: Billing
 
   return (
     <div className="flex flex-wrap gap-3">
-      {!isPremium ? (
+      {!isPremium && !isAndroid ? (
         <button type="button" onClick={() => void startCheckout()} disabled={loadingAction !== null} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60">
           {loadingAction === "checkout" ? "Opening checkout..." : "Upgrade to Premium"}
         </button>

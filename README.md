@@ -46,6 +46,7 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 STRIPE_SECRET_KEY=sk_live_xxxxxxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxx
 STRIPE_PREMIUM_PRICE_ID=price_xxxxxxxxx
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxxxxxxxx
 NEXT_PUBLIC_APP_URL=https://YOUR-DOMAIN.com
 ```
 
@@ -53,6 +54,7 @@ Notes:
 
 - `OPENAI_API_KEY` is required for studio image generation and edit flows.
 - `OPENAI_BASE_URL` can point to any OpenAI-compatible endpoint.
+- `BLOB_READ_WRITE_TOKEN` is required for image and file uploads. Create or connect a Vercel Blob store, then add its read/write token to local `.env.local` and to the Vercel project's Production, Preview, and Development environment settings. Do not expose this value through a `NEXT_PUBLIC_` variable.
 - Stripe currently gates paid image generation features and the Premium Suite collaboration surface under a single premium plan.
 
 ## Local Development
