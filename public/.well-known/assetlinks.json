@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.muonmechatronics.smartartse",
+      "sha256_cert_fingerprints": [
+        "F3:19:D9:ED:05:43:40:99:A2:7C:E7:5C:30:E5:66:35:E4:31:70:E5:B6:7C:F8:78:B2:D3:53:C7:A3:35:5D:80"
+      ]
+    }
+  }
+]

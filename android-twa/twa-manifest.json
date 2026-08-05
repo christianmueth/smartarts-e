@@ -1,0 +1,28 @@
+{
+  "packageId": "com.muonmechatronics.smartartse",
+  "host": "smartarts-e.com",
+  "name": "SmartArts-E",
+  "launcherName": "SmartArts-E",
+  "description": "Create artwork with AI-powered creative tools.",
+  "iconUrl": "https://smartarts-e.com/smartarts-e_logo.png",
+  "maskableIconUrl": "https://smartarts-e.com/smartarts-e_logo.png",
+  "startUrl": "/app/create",
+  "display": "standalone",
+  "orientation": "portrait",
+  "statusBarStyle": "default",
+  "themeColor": "#ffffff",
+  "backgroundColor": "#ffffff",
+  "shortcuts": [],
+  "screenshots": [],
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": true
+  },
+  "alphaCode": 1,
+  "signingKey": {
+    "path": "./smartarts-e.keystore",
+    "alias": "smartarts-e"
+  },
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://smartarts-e.com/manifest.webmanifest"
+}

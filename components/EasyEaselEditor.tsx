@@ -1422,6 +1422,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
             </div>
           </aside>
 
+          <div className="min-w-0 space-y-4">
           <section className="rounded-[1.8rem] border border-yellow-200/80 bg-white/78 p-4 shadow-[0_18px_60px_rgba(255,208,64,0.18)] backdrop-blur">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -1568,6 +1569,71 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
             </div>
           </section>
 
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[1.5rem] border border-pink-200/80 bg-white/82 p-4 shadow-[0_14px_40px_rgba(255,129,181,0.12)] backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-[#7a1f4f]">Basic adjustments</h2>
+                {selectedLayer ? <span className="max-w-[12rem] truncate text-xs text-pink-500">{selectedLayer.name}</span> : null}
+              </div>
+              <div className="mt-4 grid gap-3 text-sm text-pink-700 sm:grid-cols-2">
+                <label className="block">
+                  Canvas background
+                  <input type="color" value={document.backgroundColor} onChange={(event) => handleBackgroundColorChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-pink-200 bg-white" />
+                </label>
+                <label className="block">
+                  Brush size
+                  <input type="range" min={2} max={40} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} className="mt-3 w-full" />
+                </label>
+                {selectedLayer ? (
+                  <>
+                    <label className="block">
+                      Opacity
+                      <input type="range" min={0.05} max={1} step={0.05} value={selectedLayer.opacity} onChange={(event) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, opacity: Number(event.target.value) }))} className="mt-3 w-full" />
+                    </label>
+                    {selectedImageLayer ? (
+                      <>
+                        <label className="block">
+                          Brightness
+                          <input type="range" min={-1} max={1} step={0.05} value={selectedImageLayer.brightness} onChange={(event) => updateLayer(selectedImageLayer.id, (layer) => layer.kind === "image" ? { ...layer, brightness: Number(event.target.value) } : layer)} className="mt-3 w-full" />
+                        </label>
+                        <label className="block">
+                          Contrast
+                          <input type="range" min={-1} max={1} step={0.05} value={selectedImageLayer.contrast} onChange={(event) => updateLayer(selectedImageLayer.id, (layer) => layer.kind === "image" ? { ...layer, contrast: Number(event.target.value) } : layer)} className="mt-3 w-full" />
+                        </label>
+                      </>
+                    ) : null}
+                    <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+                      <button type="button" onClick={() => duplicateSelectedLayer()} className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900">Duplicate</button>
+                      <button type="button" onClick={() => deleteSelectedLayer()} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700">Delete</button>
+                      {cropRect ? <button type="button" onClick={() => applyCrop()} className="rounded-full border border-pink-200 bg-pink-100 px-3 py-1.5 text-sm font-medium text-pink-700">Apply crop</button> : null}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-pink-200/80 bg-white/82 p-4 shadow-[0_14px_40px_rgba(255,129,181,0.12)] backdrop-blur">
+              <h2 className="text-sm font-semibold text-[#7a1f4f]">AI actions</h2>
+              <div className="mt-4 space-y-3">
+                <textarea value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Edit the selected image, e.g. make the lighting warmer and remove the background." className="min-h-20 w-full rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate text-xs text-pink-600">{selectedImageLayer ? `Selected: ${selectedImageLayer.name}` : "Select an image layer to use AI actions."}</p>
+                  <button type="button" onClick={() => void runAi("edit")} disabled={busyAction !== null || !selectedImageLayer || !aiPrompt.trim()} className="rounded-lg bg-[#d63f7d] px-3 py-2 text-sm font-semibold text-white hover:bg-[#bd2868] disabled:opacity-50">
+                    {busyAction === "edit" ? "Editing..." : "Edit selected image"}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {IMAGE_AI_ACTIONS.map(([label, instruction]) => (
+                    <button key={label} type="button" onClick={() => void runAi("edit", aiPrompt.trim() || instruction)} disabled={busyAction !== null || !selectedImageLayer} className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-left text-xs font-medium text-pink-700 hover:bg-pink-50 disabled:opacity-50">
+                      {busyAction === "edit" ? "Working..." : label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+          </div>
+
           <aside className="rounded-[1.8rem] border border-pink-200/80 bg-white/82 p-4 shadow-[0_18px_60px_rgba(255,129,181,0.16)] backdrop-blur">
             <div className="space-y-4">
               <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
@@ -1638,96 +1704,6 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
                 </div>
               </details>
 
-              <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">Basic adjustments</summary>
-                <div className="mt-3 space-y-3 text-sm text-pink-700">
-                  <label className="block">
-                    Canvas background
-                    <input type="color" value={document.backgroundColor} onChange={(event) => handleBackgroundColorChange(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-pink-200 bg-white" />
-                  </label>
-                  <label className="block">
-                    Brush size
-                    <input type="range" min={2} max={40} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} className="mt-1 w-full" />
-                  </label>
-                  {selectedLayer ? (
-                    <>
-                      <label className="block">
-                        Opacity
-                        <input
-                          type="range"
-                          min={0.05}
-                          max={1}
-                          step={0.05}
-                          value={selectedLayer.opacity}
-                          onChange={(event) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, opacity: Number(event.target.value) }))}
-                          className="mt-1 w-full"
-                        />
-                      </label>
-                      {selectedImageLayer ? (
-                        <>
-                          <label className="block">
-                            Brightness
-                            <input
-                              type="range"
-                              min={-1}
-                              max={1}
-                              step={0.05}
-                              value={selectedImageLayer.brightness}
-                              onChange={(event) => updateLayer(selectedImageLayer.id, (layer) => layer.kind === "image" ? { ...layer, brightness: Number(event.target.value) } : layer)}
-                              className="mt-1 w-full"
-                            />
-                          </label>
-                          <label className="block">
-                            Contrast
-                            <input
-                              type="range"
-                              min={-1}
-                              max={1}
-                              step={0.05}
-                              value={selectedImageLayer.contrast}
-                              onChange={(event) => updateLayer(selectedImageLayer.id, (layer) => layer.kind === "image" ? { ...layer, contrast: Number(event.target.value) } : layer)}
-                              className="mt-1 w-full"
-                            />
-                          </label>
-                        </>
-                      ) : null}
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => duplicateSelectedLayer()} className="rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-sm font-medium text-yellow-900">Duplicate</button>
-                        <button type="button" onClick={() => deleteSelectedLayer()} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700">Delete</button>
-                      </div>
-                    </>
-                  ) : null}
-                  {cropRect ? (
-                    <button type="button" onClick={() => applyCrop()} className="rounded-full border border-pink-200 bg-pink-100 px-3 py-1.5 text-sm font-medium text-pink-700">
-                      Apply crop
-                    </button>
-                  ) : null}
-                </div>
-              </details>
-
-              <details open className="rounded-[1.4rem] border border-pink-100 bg-pink-50/60 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[#7a1f4f]">AI actions</summary>
-                <div className="mt-3 space-y-3">
-                  <textarea
-                    value={aiPrompt}
-                    onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Edit the selected image, e.g. make the lighting warmer and remove the background."
-                    className="min-h-20 w-full rounded-[1.25rem] border border-pink-200 bg-white px-4 py-3 text-sm text-[#6d2141] outline-none placeholder:text-pink-300"
-                  />
-                  <p className="text-xs text-pink-600">{selectedImageLayer ? `Selected: ${selectedImageLayer.name}` : "Select an image layer to use AI actions."}</p>
-                  <button type="button" onClick={() => void runAi("edit")} disabled={busyAction !== null || !selectedImageLayer || !aiPrompt.trim()} className="w-full rounded-lg bg-[#d63f7d] px-3 py-2 text-sm font-semibold text-white hover:bg-[#bd2868] disabled:opacity-50">
-                    {busyAction === "edit" ? "Editing..." : "Edit selected image"}
-                  </button>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-pink-600">Sample edits</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {IMAGE_AI_ACTIONS.map(([label, instruction]) => (
-                      <button key={label} type="button" onClick={() => void runAi("edit", aiPrompt.trim() || instruction)} disabled={busyAction !== null || !selectedImageLayer} className="rounded-lg border border-pink-200 bg-white px-3 py-2 text-left text-xs font-medium text-pink-700 hover:bg-pink-50 disabled:opacity-50">
-                        {busyAction === "edit" ? "Working..." : label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </details>
             </div>
           </aside>
         </div>

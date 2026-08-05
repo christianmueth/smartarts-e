@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import NavBarClerkControls from "@/components/NavBarClerkControls";
 
 export default function NavBar() {
+  const pathname = usePathname();
+
+  // Hide the standard marketing NavBar on /app routes (mobile shell takes over)
+  if (pathname.startsWith("/app")) {
+    return null;
+  }
   return (
     <header className="sticky top-0 z-50 border-b border-pink-200/80 bg-[linear-gradient(90deg,rgba(255,246,205,0.82),rgba(255,235,246,0.84),rgba(255,248,216,0.82))] backdrop-blur-xl">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
