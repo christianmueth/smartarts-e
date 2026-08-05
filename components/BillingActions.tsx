@@ -63,9 +63,9 @@ export default function BillingActions({ isPremium, hasBillingProfile }: Billing
         </button>
       ) : null}
 
-      {(isPremium || hasBillingProfile) ? (
+      {isPremium && hasBillingProfile ? (
         <button type="button" onClick={() => void openPortal()} disabled={loadingAction !== null} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-60">
-          {loadingAction === "portal" ? "Opening portal..." : "Manage subscription / cancellation"}
+          {loadingAction === "portal" ? "Opening portal..." : "Manage / cancel subscription"}
         </button>
       ) : null}
     </div>
