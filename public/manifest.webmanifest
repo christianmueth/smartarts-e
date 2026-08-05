@@ -2,7 +2,7 @@
   "name": "SmartArts-E",
   "short_name": "SmartArts-E",
   "description": "Create artwork with AI-powered creative tools.",
-  "start_url": "/app/studio",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

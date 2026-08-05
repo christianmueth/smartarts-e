@@ -1,28 +1,45 @@
 {
   "packageId": "com.muonmechatronics.smartartse",
-  "host": "smartarts-e.com",
+  "host": "www.smartarts-e.com",
   "name": "SmartArts-E",
   "launcherName": "SmartArts-E",
-  "description": "Create artwork with AI-powered creative tools.",
-  "iconUrl": "https://smartarts-e.com/smartarts-e_logo.png",
-  "maskableIconUrl": "https://smartarts-e.com/smartarts-e_logo.png",
-  "startUrl": "/app/create",
   "display": "standalone",
-  "orientation": "portrait",
-  "statusBarStyle": "default",
-  "themeColor": "#ffffff",
-  "backgroundColor": "#ffffff",
-  "shortcuts": [],
-  "screenshots": [],
-  "fallbackType": "customtabs",
-  "features": {
-    "locationDelegation": true
-  },
-  "alphaCode": 1,
+  "themeColor": "#FFFFFF",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#FFFFFF",
+  "splashScreenFadeOutDuration": 300,
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://www.smartarts-e.com/smartarts-e_logo.png",
+  "maskableIconUrl": "https://www.smartarts-e.com/smartarts-e_logo.png",
   "signingKey": {
     "path": "./smartarts-e.keystore",
     "alias": "smartarts-e"
   },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 3,
+  "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://smartarts-e.com/manifest.webmanifest"
+  "webManifestUrl": "https://www.smartarts-e.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": false
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "displayOverride": [],
+  "appVersion": "1.0.0"
 }
