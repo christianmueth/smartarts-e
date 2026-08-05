@@ -8,8 +8,8 @@ import NavBarClerkControls from "@/components/NavBarClerkControls";
 export default function NavBar() {
   const pathname = usePathname();
 
-  // Hide the standard marketing NavBar on /app routes (mobile shell takes over)
-  if (pathname.startsWith("/app")) {
+  // The mobile shell owns most /app routes, but Billing retains its full website layout.
+  if (pathname.startsWith("/app") && pathname !== "/app/billing") {
     return null;
   }
   return (
