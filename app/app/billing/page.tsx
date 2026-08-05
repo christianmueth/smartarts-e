@@ -18,7 +18,7 @@ export default async function BillingPage() {
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#fffaf0_0%,_#fff7fb_52%,_#fffdf3_100%)] text-[#5f2141]">
       <div className="mx-auto max-w-3xl px-4 py-10 md:px-6 md:py-14">
-        <section className="border-y border-pink-100 py-8 md:py-10">
+        <section className="border border-pink-200/80 bg-white/90 p-6 shadow-[0_16px_40px_rgba(122,31,79,0.08)] backdrop-blur-sm md:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-700">Billing</p>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
             <div>
