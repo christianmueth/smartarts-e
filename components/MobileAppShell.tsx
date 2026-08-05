@@ -11,6 +11,10 @@ export function MobileAppShell({
 }) {
   const pathname = usePathname();
 
+  if (pathname === "/app/billing") {
+    return <>{children}</>;
+  }
+
   const navItems = [
     { label: "Create", href: "/app/create", emoji: "🎨" },
     { label: "Gallery", href: "/app/gallery", emoji: "🖼️" },
