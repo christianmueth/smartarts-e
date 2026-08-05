@@ -602,7 +602,7 @@ export default function EasyEaselEditor({ initialAssets, initialProjects, initia
 
     const isStageTarget = event.target === stageRef.current || event.target === event.target.getStage();
 
-    if (tool === "brush" || tool === "eraser") {
+    if ((tool === "brush" || tool === "eraser") && isStageTarget) {
       const id = createId("line");
       const nextLine: EditorLayer = {
         id,
