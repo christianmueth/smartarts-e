@@ -441,10 +441,18 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
               className="min-h-[164px] w-full resize-none rounded-[1.75rem] border border-pink-200 bg-[linear-gradient(180deg,_rgba(255,244,250,0.98),_rgba(255,250,214,0.95))] px-5 py-4 text-base text-[#6d2141] outline-none placeholder:text-pink-300 shadow-inner shadow-pink-100/60"
             />
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-100">
-                Reference
-                <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleReferenceUpload(event.target.files?.[0] || null)} />
-              </label>
+              {signedIn ? (
+                <label className="inline-flex cursor-pointer items-center rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-100">
+                  Reference
+                  <input type="file" accept="image/*" className="hidden" onChange={(event) => void handleReferenceUpload(event.target.files?.[0] || null)} />
+                </label>
+              ) : (
+                <SignInButton mode="modal" forceRedirectUrl="/" signUpForceRedirectUrl="/">
+                  <button type="button" className="rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-100">
+                    Reference
+                  </button>
+                </SignInButton>
+              )}
               {referenceImageName ? (
                 <button type="button" onClick={() => void handleReferenceUpload(null)} className="rounded-full border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-800 transition hover:bg-yellow-100">
                   Clear
@@ -466,14 +474,22 @@ export default function HomeStudioMvp({ signedIn, initialProjects, initialProjec
                   </button>
                 </SignInButton>
               )}
-              <button
-                type="button"
-                onClick={() => void startNewSession()}
-                disabled={busyAction !== null || !hasWorkspaceState}
-                className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-50 disabled:opacity-60"
-              >
-                {busyAction === "reset" ? "Clearing..." : "New session"}
-              </button>
+              {signedIn ? (
+                <button
+                  type="button"
+                  onClick={() => void startNewSession()}
+                  disabled={busyAction !== null || !hasWorkspaceState}
+                  className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-50 disabled:opacity-60"
+                >
+                  {busyAction === "reset" ? "Clearing..." : "New session"}
+                </button>
+              ) : (
+                <SignInButton mode="modal" forceRedirectUrl="/" signUpForceRedirectUrl="/">
+                  <button type="button" className="rounded-full border border-pink-200 bg-white/85 px-4 py-2 text-sm font-medium text-pink-700 transition hover:bg-pink-50">
+                    New session
+                  </button>
+                </SignInButton>
+              )}
               {signedIn && generationAccess ? (
                 <span className="text-sm text-pink-800/75">
                   {generationAccess.isPremium ? "Premium image generation" : `${generationAccess.remaining} free images remaining this month`}
