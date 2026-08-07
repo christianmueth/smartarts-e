@@ -17,7 +17,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata = {
-  title: "SmartArts | AI Art Production",
+  title: "SmartArts-E",
   description: "SmartArts is focused on AI-enabled art production for concept development, visual iteration, and campaign-ready delivery.",
   icons: {
     icon: "/smartarts-e_logo.png",
